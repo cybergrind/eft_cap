@@ -1,6 +1,7 @@
 """
 
 """
+import asyncio
 import logging
 import struct
 
@@ -31,6 +32,7 @@ class NetworkTransport:
             # noinspection PyBroadException
             try:
                 self.process_packet(packet)
+                await asyncio.sleep(0)
             except Exception as e:
                 self.log.exception(f'When process_packet: {packet}')
 
@@ -41,4 +43,34 @@ class NetworkTransport:
             op = stream[0]
             if op in Z_SKIP:
                 return
+            elif op == Z_INIT:
+                self.new_session()
+                return
+        else:
+            ctx = {'channel': channel}
+            if self.decode_data_packet(stream, ctx):
+                return
         self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
+
+    def decode_data_packet(self, stream, ctx):
+        b_cps, stream = split(stream, 6)
+        # print(f'Parse: {b_cps}')
+        (connection_id, packet_id, session_id) = struct.unpack('>HHH', b_cps)
+        ctx.update({
+            'connection_id': connection_id,
+            'packet_id': packet_id,
+            'session_id': session_id,
+        })
+        b_acks, stream = split(stream, 2 + 4 * 4)
+        if len(stream) == 0:
+            return True
+        elif len(stream) < 2:
+            self.log.warning(f'Error message: {stream}')
+            return True
+
+        print(f'CTX: {ctx} / {stream}')
+        return False
+
+    def new_session(self):
+        """Called when new game has started"""
+        pass
