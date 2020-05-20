@@ -10,9 +10,16 @@ Z_HEARTBEAT = 0x4
 Z_INIT = 0x1
 Z_SKIP = [Z_HEARTBEAT]
 
+M_MSG_DELIMITER = 255
+M_MSG_COMBINED = 254
+
 
 def split(data, num_bytes):
     return data[:num_bytes], data[num_bytes:]
+
+def split_byte(data):
+    byte, ret = split(data, 1)
+    return byte[0], ret
 
 
 class NetworkTransport:
@@ -37,17 +44,18 @@ class NetworkTransport:
                 self.log.exception(f'When process_packet: {packet}')
 
     def process_packet(self, packet):
-        b_channel, stream = split(packet['data'], 2)
-        (channel, ) = struct.unpack('>H', b_channel)
-        if channel == 0:
-            op = stream[0]
+        self.curr_packet = packet
+        stream = packet['data']
+        (conn, ) = struct.unpack('>H', stream[:2])
+        if conn == 0:
+            op = stream[2]
             if op in Z_SKIP:
                 return
             elif op == Z_INIT:
                 self.new_session()
                 return
         else:
-            ctx = {'channel': channel}
+            ctx = {}
             if self.decode_data_packet(stream, ctx):
                 return
         self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
@@ -67,9 +75,45 @@ class NetworkTransport:
         elif len(stream) < 2:
             self.log.warning(f'Error message: {stream}')
             return True
+        channel_id = stream[0]
+        if channel_id == M_MSG_DELIMITER:
+            stream = self.extractMessageHeader(stream, ctx)
+            b_header, stream = split(stream, 2)
+            (msg_id,) = struct.unpack('>H', b_header)
+            ctx['msg_id'] = msg_id
+            print(ctx)
+            print(f'Len: {len(stream)} / {stream}')
+            exit(0)
+        if channel_id in (M_MSG_COMBINED, M_MSG_DELIMITER):
+            return False
+        return self.extractMessage(stream, ctx)
 
-        print(f'CTX: {ctx} / {stream}')
-        return False
+    def extractMessageHeader(self, stream, ctx):
+        channel_id, stream = split_byte(stream)
+        ctx['channel_id'] = channel_id
+        b_len = stream[0]
+        if b_len & 0x80:
+            b_len, stream = split(stream, 2)
+            (msg_len,) = struct.unpack('>H', b_len)
+            msg_len &= 0x7fff  # reset high bit
+        else:
+            msg_len, stream = split_byte(stream)
+        ctx['msg_len'] = msg_len
+        return stream
+
+    def extractMessage(self, stream, ctx):
+        # extractMessageHeader
+        stream = self.extractMessageHeader(stream, ctx)
+        msg_len = ctx['msg_len']
+        if msg_len > len(stream):
+            print(ctx)
+            print(stream)
+            print(self.curr_packet)
+            print(f'Pckt: {self.packet_num} Len: {len(self.curr_packet["data"])}')
+        print(f'exit: {self.packet_num} / len: {len(self.curr_packet["data"])} / {self.curr_packet["data"]}')
+        exit(1)
+        # checkLengthIsValid
+
 
     def new_session(self):
         """Called when new game has started"""
