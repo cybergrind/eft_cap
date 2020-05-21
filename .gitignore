@@ -2,3 +2,4 @@ venv
 shark_cap
 .idea
 *~
+__pycache__

@@ -25,6 +25,7 @@ def capture():
                 f.write(packet.payload)
             break
 
+
 def n_separated_file(name):
     with open(name) as f:
         while line := f.readline():
