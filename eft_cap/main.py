@@ -1,7 +1,6 @@
 import asyncio
 from pprint import pprint
 import sys
-import pydivert
 import json
 
 sys.path.append('.')
@@ -16,7 +15,9 @@ src_filter = '(udp.SrcPort >= 56000 and udp.SrcPort <= 61000)'
 s1 = '(udp.DstPort >= 17000 and udp.DstPort <= 17100)'
 d1 = '(udp.SrcPort >= 17000 and udp.SrcPort <= 17100)'
 
+
 def capture():
+    import pydivert  # linux support
     with pydivert.WinDivert(f'{s1} or {d1}') as w:
         for packet in w:
             print(f'Packet: {packet}')
@@ -24,10 +25,14 @@ def capture():
                 f.write(packet.payload)
             break
 
+def n_separated_file(name):
+    with open(name) as f:
+        while line := f.readline():
+            yield json.loads(line)
+
+
 def from_file():
-    with open('./shark_cap/d2.json') as f:
-        packets = json.load(f)
-    for packet in packets:
+    for packet in n_separated_file('./shark_cap/cap_17020.json'):
         udp = packet["_source"]["layers"]['udp']
         ip = packet["_source"]["layers"]['ip']
         data = bytes.fromhex(packet["_source"]["layers"]["data"]["data.data"].replace(':', ''))

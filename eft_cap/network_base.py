@@ -83,7 +83,7 @@ class NetworkTransport:
             ctx['msg_id'] = msg_id
             print(ctx)
             print(f'Len: {len(stream)} / {stream}')
-            exit(0)
+            exit(1)
         if channel_id in (M_MSG_COMBINED, M_MSG_DELIMITER):
             return False
         return self.extractMessage(stream, ctx)
