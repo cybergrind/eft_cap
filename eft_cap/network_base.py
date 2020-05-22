@@ -5,6 +5,8 @@ import asyncio
 import logging
 import struct
 from eft_cap.msg_level import MsgDecoder
+from eft_cap import bprint
+import pickle
 
 
 Z_HEARTBEAT = 0x4
@@ -19,16 +21,10 @@ CHAN_MAX = 207
 def split(data, num_bytes):
     return data[:num_bytes], data[num_bytes:]
 
+
 def split_byte(data):
     byte, ret = split(data, 1)
     return byte[0], ret
-
-
-def bprint(stream):
-    bstring = []
-    for i in stream:
-        bstring.append(hex(i)[2:])
-    print(' '.join(bstring))
 
 
 class Acks:
@@ -80,6 +76,8 @@ class NetworkTransport:
                 await asyncio.sleep(0)
             except Exception as e:
                 self.log.exception(f'When process_packet: {packet}')
+                with open('error.packet', 'wb') as f:
+                    pickle.dump(packet, f)
 
     def process_packet(self, packet):
         self.curr_packet = packet

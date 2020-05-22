@@ -4,8 +4,11 @@ from eft_cap.msg_level import Stream
 def test_01():
     one_bit = b'\x80\x00\x00'
     s = Stream(one_bit)
-    for i in range(1, 10):
-        assert s.read_bits(i) == 1 << (i - 1)
+    for i in range(1, 16):
+        res = s.read_bits(i)
+        exp = 1 << (i - 1)
+        exp = min(128, exp)
+        assert res == exp, f'I: {i}: Res: {res} Exp: {exp}'
         s.reset()
 
 
@@ -30,4 +33,9 @@ def test_03():
     s.reset()
     assert s.read_bits(4) == 0b1111
     s.reset()
-    assert s.read_u16() == 0b1111_1111_0000_0000
+    assert s.read_u16() == 0b0000_0000_1111_1111
+
+def test_04():
+    bs = b'\x16\x00'
+    s = Stream(bs)
+    assert s.read_bits(16) == 22

@@ -1,6 +1,7 @@
 import math
 from array import array
 import itertools
+from eft_cap import bprint, ParsingError
 
 
 SERVER_INIT = 147
@@ -68,12 +69,13 @@ def to_byte(bits):
 class Stream:
     def __init__(self, stream):
         self.bit_offset = 0
+        self.orig_stream = stream
         bitstring = itertools.chain.from_iterable([to_bits(one_byte) for one_byte in stream])
         self.stream = array('B', bitstring)
 
     @property
     def rest(self):
-        assert len(self.stream[self.bit_offset:]) % 4 == 0
+        assert len(self.stream[self.bit_offset:]) % 8 == 0, f'Off: {self.bit_offset}'
         bytes_list = []
         i = 0
         while i * 8 < len(self.stream):
@@ -82,22 +84,52 @@ class Stream:
             i += 1
         return bytes(bytes_list)
 
-    def read_bits(self, bits):
+    def read_l_bits(self, bits):
         """
         little endian bits
         """
+        assert bits <= 8
         out = 0
         for i in range(bits):
             # out += self.stream[self.bit_offset] << i  # reversed order
-            out += self.stream[self.bit_offset] << (bits - 1 - i)
+            shift = bits - 1 - i
+            # shift = i
+            num = self.stream[self.bit_offset] << shift
+            # print(f'Shift => {shift} : Num: {num}')
+            out += num
             self.bit_offset += 1
         return out
+
+    def read_bits(self, bits):
+        if bits <= 8:
+            return self.read_l_bits(bits)
+        else:
+            acc = 0
+            for i in range(bits // 8):
+                acc += self.read_l_bits(8)
+            acc += self.read_l_bits(bits % 8)
+            return acc
+
+    def read_bytes(self, num_bytes):
+        required = self.bit_offset + num_bytes * 8
+        remains = len(self.stream) - self.bit_offset
+        if required > remains:
+            raise ParsingError(f'Need: {required} Remains: {remains}')
+        assert self.bit_offset % 8 == 0
+        boff = int(self.bit_offset / 8)
+        print(f'Get bytes: {num_bytes} BOFF: {boff} OFF: {boff + num_bytes}')
+        resp = self.orig_stream[boff:(boff + num_bytes)]
+        self.bit_offset += num_bytes * 8
+        return resp
 
     def read_u8(self):
         return self.read_bits(8)
 
     def read_u16(self):
-        return self.read_bits(16)
+        b1 = self.read_bits(8)
+        b2 = self.read_bits(8) << 8
+        print(f'B1: {b1} B2: {b2}')
+        return b1 + b2
 
     def reset(self):
         self.bit_offset = 0
@@ -110,8 +142,13 @@ class MsgDecoder:
 
     def parse(self, stream):
         print('parse')
+        bprint(stream)
         stream = Stream(stream)
         msg = {}
+        msg['len'] = stream.read_u16()
+        print(f'LEN: {msg["len"]}')
+        msg['content'] = stream.read_bytes(msg['len'])
+        print(msg)
         self.transport.add_msg(self.ctx, msg)
         print('return')
         ret = stream.rest
