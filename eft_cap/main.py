@@ -28,8 +28,10 @@ def capture():
 
 def n_separated_file(name):
     with open(name) as f:
-        while line := f.readline():
+        line = f.readline()
+        while line:
             yield json.loads(line)
+            line = f.readline()
 
 
 def from_file():
