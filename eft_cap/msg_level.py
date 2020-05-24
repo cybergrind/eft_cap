@@ -124,6 +124,10 @@ class Stream:
             acc += self.read_l_bits(bits % 8)
             return acc
 
+    def read_limited_bits(self, min_value=0, max_value=1):
+        required = bits_required(min_value, max_value)
+        return self.read_bits(required) + min_value
+
     def read_bytes(self, num_bytes):
         required = num_bytes * 8
         remains = len(self.stream) - self.bit_offset
@@ -155,19 +159,78 @@ class Stream:
             self.read_bits(8) << 24
         )
 
+    def read_u64(self):
+        return struct.unpack('<Q', self.read_bytes(8))[0]
+
     def read_f32(self):
-        bf32 = self.read_bytes(4)
+        if self.bit_offset % 8 == 0:
+            bf32 = self.read_bytes(4)
+        else:
+            bf32 = bytes([self.read_bits(8),
+                          self.read_bits(8),
+                          self.read_bits(8),
+                          self.read_bits(8)])
         return struct.unpack('<f', bf32)[0]
 
     def reset(self):
         self.bit_offset = 0
 
-
+GLOBAL = {
+    'map': None,
+}
 PLAYERS = {}
 
+class ParsingMethods:
+    def read_size_and_bytes(self):
+        size = self.data.read_u16()
+        return self.data.read_bytes(size)
 
-class Player:
+    def read_rot(self):
+        return {
+            'a': self.data.read_f32(),
+            'b': self.data.read_f32(),
+            'c': self.data.read_f32(),
+            'd': self.data.read_f32()
+        }
+
+    def read_pos(self):
+        return {'x': self.data.read_f32(),
+                'y': self.data.read_f32(),
+                'z': self.data.read_f32()}
+
+
+class Map(ParsingMethods):
     def __init__(self, msg):
+        self.msg = msg
+        self.data = msg.data
+
+        unk = self.data.read_u8()
+        real_dt = 0 if self.data.read_u8() else self.data.read_u64()
+        game_dt = self.data.read_u64()
+        # print(f'Real DT: {real_dt} Game DT: {game_dt}')
+        time_factor = self.data.read_f32()
+
+        unk1 = self.read_size_and_bytes()  # assets / json
+        unk2 = self.read_size_and_bytes()  # some ids
+        unk3 = self.read_size_and_bytes()  # weather?
+        unk4 = self.data.read_u8()
+        member_type = self.data.read_u32()
+        unk5 = self.data.read_f32()
+        unk6 = self.read_size_and_bytes()  # lootables?
+        unk7 = self.read_size_and_bytes()
+
+        self.bound_min = self.read_pos()
+        self.bound_max = self.read_pos()
+        unk8 = self.data.read_u16()
+        unk9 = self.data.read_u8()
+        print(f'Map: {self.bound_min} to {self.bound_max}')
+
+
+class Player(ParsingMethods):
+    def __init__(self, msg, me=False):
+        self.me = me
+        self.died = False
+        self.msg = msg
         self.data = msg.data
 
         self.spawn_time = time.time()
@@ -177,10 +240,6 @@ class Player:
         self.pos = self.read_pos()
         self.deserialize_initial_state()
         PLAYERS[self.cid] = self
-
-    def read_size_and_bytes(self):
-        size = self.data.read_u16()
-        return self.data.read_bytes(size)
 
     def deserialize_initial_state(self):
         unk2 = self.data.read_u8()
@@ -216,30 +275,47 @@ class Player:
     def __str__(self):
         return f'[{self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}'
 
-    def read_rot(self):
-        return {
-            'a': self.data.read_f32(),
-            'b': self.data.read_f32(),
-            'c': self.data.read_f32(),
-            'd': self.data.read_f32()
-        }
+    def update(self, msg, data):
+        self.msg = msg
+        self.data = data
+        if self.me:
+            print(f'Skip myself {self}')
+        args = {'min_value': 1, 'max_value': 5}
+        if self.data.read_bits(1) == 0:
+            args = {'min_value': 0, 'max_value': 2097151}
+        num = self.data.read_limited_bits(**args)
+        game_time = self.data.read_f32()
+        # print(f'Time: {game_time}')
+        is_disconnected = self.data.read_bits(1)
 
-    def read_pos(self):
-        return {'x': self.data.read_f32(),
-                'y': self.data.read_f32(),
-                'z': self.data.read_f32()}
+        if self.data.read_bits(1) != 1:
+            # probably not died but not alive yet
+            # print(f'Died: {self}')
+            # self.died = True
+            pass
+        else:
+            self.update_position()
 
-    def update(self, msg):
-        pass
+    def update_position(self):
+        print(f'Update {self} Incoming: {self.msg.ctx["incoming"]}')
+        last_pos = self.pos
+        read = self.data.read_bits(1) == 1
+        if read:
+            partial = self.data.read_bits(1) == 1
+            if partial:
+                pass
+            pass
 
 
-class MsgDecoder:
+
+class MsgDecoder(ParsingMethods):
     log = logging.getLogger('MsgDecoder')
 
     def __init__(self, transport, ctx):
         self.transport = transport
         self.ctx = ctx
         self.incoming = ctx['incoming']
+        self.channel_id = ctx['channel_id']
         self.decoded = False
 
     def parse(self, stream):
@@ -265,32 +341,76 @@ class MsgDecoder:
             pass
         return ret
 
-    def read_pos(self):
-        return {'x': self.data.read_f32(),
-                'y': self.data.read_f32(),
-                'z': self.data.read_f32()}
-
     exit = 1
+
+    def init_server(self):
+        if not self.ctx['incoming']:
+            return
+        curr_map = Map(self)
+        GLOBAL['map'] = curr_map
+
     def decode(self):
         self.data = Stream(self.content)
-        if self.op_type == PLAYER_SPAWN:
-            self.player = Player(self)
 
-            # MsgDecoder.exit -= 1
-            # print(f'PID: {self.pid} CID: {self.cid} POS: {self.pos}')
+        if self.op_type == SERVER_INIT:
+            self.init_server()
+        elif self.op_type == PLAYER_SPAWN:
+            self.player = Player(self, me=True)
         elif self.op_type == OBSERVER_SPAWN:
             self.player = Player(self)
-            # self.obs = self.deserialize_initial_state()
-            # MsgDecoder.exit -= 1
-            # print(f'PID: {self.pid} CID: {self.cid} POS: {self.pos}')
         elif self.op_type == OBSERVER_UNSPAWN:
             self.pid = self.data.read_u32()
             self.cid = self.data.read_u8()
             print(f'Unspawn: {PLAYERS[self.cid]}')
-            MsgDecoder.exit -= 1
+            # MsgDecoder.exit -= 1
+        elif self.op_type == GAME_UPDATE:
+
+            up_bin = self.read_size_and_bytes()
+            up_data = Stream(up_bin)
+            if not self.ctx['incoming']:
+                self.update_outbound(up_data)
+            elif up_data.read_bits(1) == 1:
+                self.update_player(up_data)
+            else:
+                if not self.ctx['incoming']:
+                    print(self.transport.curr_packet)
+                    print('Exit 22')
+                    exit(22)
+                self.update_world(up_data)
         if MsgDecoder.exit <= 0:
             print('Exit 20')
             exit(20)
+
+    skip_unk_player = math.inf
+    def update_player(self, up_data):
+
+        # NOT CID: 3924 => 3
+        # 4274 => 4
+        # 9975 => 4
+        # 11481 {559} => 4
+        # 19204 {316} => 4
+        # 24137 {203} => 4
+        if self.channel_id not in PLAYERS:
+            if MsgDecoder.skip_unk_player > 0:
+                MsgDecoder.skip_unk_player -= 1
+                return
+            print(f'Players: {list(PLAYERS.keys())} CID: {self.channel_id}')
+            print(self.transport.curr_packet)
+            print('Exit 21')
+            exit(21)
+        player = PLAYERS[self.channel_id]
+        player.update(self, up_data)
+        # MsgDecoder.exit -= 1
+
+    def update_outbound(self, up_data):
+        num = up_data.read_limited_bits(0, 127)
+        # print(f'Outbound num = {num}')
+        return
+        for i in range(num):
+            rtt = up_data.read_u16() if up_data.read_bits(1) else 0
+
+    def update_world(self, up_data):
+        pass
 
 
     def try_decode(self):
