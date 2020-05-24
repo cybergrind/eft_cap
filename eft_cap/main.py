@@ -35,9 +35,11 @@ def n_separated_file(name):
 
 
 def from_file():
-    for packet in n_separated_file('./shark_cap/cap_17020.json'):
+    for packet in n_separated_file('./shark_cap/cap_03.json'):
         udp = packet["_source"]["layers"]['udp']
         ip = packet["_source"]["layers"]['ip']
+        if 'data' not in packet["_source"]["layers"]:
+            continue
         data = bytes.fromhex(packet["_source"]["layers"]["data"]["data.data"].replace(':', ''))
         # print(f'{data} / {udp}')
         yield {
@@ -48,6 +50,8 @@ def from_file():
 
 def main():
     p_source = from_file()
+    for i in range(0):
+        next(p_source)
     t = NetworkTransport(p_source)
     asyncio.run(t.run(limit=None))
 

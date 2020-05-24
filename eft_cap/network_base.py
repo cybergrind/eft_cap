@@ -77,6 +77,8 @@ class NetworkTransport:
         self.packet_num = -1
         for packet in self.src:
             self.packet_num += 1
+            if self.packet_num % 500 == 0:
+                print(f'Packet: {self.packet_num}')
             if limit and self.packet_num >= limit:
                 break
             # noinspection PyBroadException
@@ -127,8 +129,10 @@ class NetworkTransport:
                 if not msg_ok:
                     stream = msg
                 elif msg.op_type == 147:  # ServerInit
-                    self.new_session()
+                    # self.new_session()
+                    pass
         if len(stream) > 0:
+            bprint(stream)
             self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
             exit(16)
 
@@ -142,16 +146,20 @@ class NetworkTransport:
 
     def get_next_message(self, stream, ctx):
         # https://forum.unity.com/threads/binary-protocol-specification.417831/#post-3495130
+        if len(stream) == 0:
+            yield False, stream
         channel_id = stream[0]
-        print(f'CHID: {channel_id}')
+        # print(f'CHID: {channel_id}')
         if channel_id == M_MSG_DELIMITER:
             stream = self.extractMessageHeader(stream, ctx)
             # channel_id + msg_len
             channel_id = ctx['channel_id']
             msg_len = ctx['msg_len']
             assert msg_len == len(stream), f'{msg_len} vs {len(stream)}'
-            print(f'FF message: len={msg_len} stream len={len(stream)}')
+            # print(f'FF message: len={msg_len} stream len={len(stream)}')
             order_id, stream = split_16(stream)
+            # 78084
+            # oid, stream = split_8(stream)
 
             while True:
                 if len(stream) == 0:
@@ -163,11 +171,11 @@ class NetworkTransport:
                     stream = self.extractMessageHeader(stream, ctx)
                     inner_msg_len = ctx['msg_len']
                     fragm_stream, stream = split(stream, inner_msg_len)
-                    print(f'IMSGLEN: {inner_msg_len} vs {len(stream)}')
+                    # print(f'IMSGLEN: {inner_msg_len} vs {len(stream)}')
                     assert inner_msg_len <= len(fragm_stream)
                     bfrag, fragm_stream = split(fragm_stream, 3)
                     frag_id, frag_idx, frag_amnt = struct.unpack('>BBB', bfrag)
-                    print(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
+                    # print(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
                     # _, stream = split(stream, 4)
                     self.fragmented[frag_id][frag_idx] = fragm_stream
                     if frag_idx == frag_amnt - 1:
@@ -175,29 +183,38 @@ class NetworkTransport:
                         for i in range(frag_amnt):
                             fragments.append(self.fragmented[frag_id][i])
                         bin_msg = b''.join(fragments)
-                        print('Assemble ')
+                        # print('Assemble ')
                         # bprint(bin_msg)
                         while len(bin_msg) > 2:
                             msg = MsgDecoder(self, ctx)
                             bin_msg = msg.parse(bin_msg)
-                            print(f'Processed message in fragmented. Remains: {len(bin_msg)}')
+                            # print(f'Processed message in fragmented. Remains: {len(bin_msg)}')
                             yield True, msg
-                        print(f'After parse: {bin_msg}')
+                        # print(f'After parse: {bin_msg}')
                         if bin_msg != b'':
-                            print(self.curr_packet)
+                            # print(self.curr_packet)
                             print('Exit 15')
                             exit(15)
                         assert bin_msg == b''
-                        print(f'Msg: {msg.op_type}')
+                        # print(f'Msg: {msg.op_type}')
                         yield True, msg
                     else:
                         yield False, stream
+                elif inner_channel_id == M_MSG_COMBINED:
+                    _, stream = split_8(stream)
                 else:
+                    print(self.curr_packet)
+                    print(f'Inner channel id: {inner_channel_id}')
+                    msg = MsgDecoder(self, ctx)
+                    stream = msg.parse(stream)
+                    yield True, msg
+                    # print('Rest is: ')
+                    # bprint(stream)
                     print('Exit 18')
                     exit(18)
-                    stream = self.extractMessageHeader(stream, ctx)
+
                     inner_msg_len = ctx['msg_len']
-                    print(f'Inner channel id: {inner_channel_id} / Rest len: {len(stream)}')
+                    # print(f'Inner channel id: {inner_channel_id} / Rest len: {len(stream)}')
                     if len(stream) == 0:
                         yield False, stream
                         return
@@ -211,14 +228,36 @@ class NetworkTransport:
                     yield True, msg
             print('Exit 14')
             exit(14)
-        if channel_id in (M_MSG_COMBINED, M_MSG_DELIMITER):
+        elif channel_id == M_MSG_COMBINED:
+            print(self.curr_packet)
             print('Exit 4')
             exit(4)
             return False, stream
-        print('Exit 18')
-        raise Exception
-        exit(18)
-        return self.extractMessage(stream, ctx)
+
+        # 487 -> 256 : 231
+        if len(stream) > 2:
+            stream = self.extractMessageHeader(stream, ctx)
+            msg_len = ctx['msg_len']
+
+            msg_stream, stream = split(stream, msg_len)
+            # print(f'Split msg stream: {len(msg_stream)} Rest: {len(stream)}')
+            msg_id, msg_stream = split_16(msg_stream)
+            ordered_id, msg_stream = split_8(msg_stream)
+            ctx['msg_id'] = msg_id
+            while len(msg_stream) > 0:
+                msg = MsgDecoder(self, ctx)
+                # bprint(stream)
+                msg_stream = msg.parse(msg_stream)
+                # print(f'Decoded simple message [{self.packet_num}]: {msg.content}')
+                yield True, msg
+            # print('After all')
+            # bprint(msg_stream)
+            if len(stream) > 2:
+                # print(f'Recur into {stream}')
+                # bprint(stream)
+                yield from self.get_next_message(stream, ctx)
+            else:
+                yield False, stream
 
     def extractMessageHeader(self, stream, ctx):
         channel_id, stream = split_8(stream)
@@ -228,8 +267,10 @@ class NetworkTransport:
             b_len, stream = split(stream, 2)
             (msg_len,) = struct.unpack('>H', b_len)
             msg_len &= 0x7fff  # reset high bit
+            # print(f'Good msg len: {msg_len}')
         else:
             msg_len, stream = split_8(stream)
+            # print(f'One bit msg len: {msg_len}')
         ctx['msg_len'] = msg_len
         return stream
 
