@@ -1,7 +1,16 @@
+import copy
+import logging
 import math
 from array import array
 import itertools
+import struct
+import zlib
+import json
+from pprint import pprint
+import time
+
 from eft_cap import bprint, ParsingError
+
 
 
 SERVER_INIT = 147
@@ -138,14 +147,100 @@ class Stream:
         # print(f'B1: {b1} B2: {b2}')
         return b1 + b2
 
+    def read_u32(self):
+        return (
+            self.read_bits(8) +
+            self.read_bits(8) << 8 +
+            self.read_bits(8) << 16 +
+            self.read_bits(8) << 24
+        )
+
+    def read_f32(self):
+        bf32 = self.read_bytes(4)
+        return struct.unpack('<f', bf32)[0]
+
     def reset(self):
         self.bit_offset = 0
 
 
+PLAYERS = {}
+
+
+class Player:
+    def __init__(self, msg):
+        self.data = msg.data
+
+        self.spawn_time = time.time()
+
+        self.pid = self.data.read_u32()
+        self.cid = self.data.read_u8()
+        self.pos = self.read_pos()
+        self.deserialize_initial_state()
+        PLAYERS[self.cid] = self
+
+    def read_size_and_bytes(self):
+        size = self.data.read_u16()
+        return self.data.read_bytes(size)
+
+    def deserialize_initial_state(self):
+        unk2 = self.data.read_u8()
+        unk3 = self.data.read_u8() == 1
+        self.pos = self.read_pos()
+        self.rot = self.read_rot()
+        in_prone = self.data.read_u8() == 1
+        pose_lvl = self.data.read_f32()
+
+        inv_bin = self.read_size_and_bytes()
+        prof_zip = self.read_size_and_bytes()
+        self.prof = json.loads(zlib.decompress(prof_zip))
+        self.full_prof = copy.copy(self.prof)
+
+        self.prof.pop('Encyclopedia')
+        self.prof.pop('BackendCounters')
+        self.prof.pop('Bonuses')
+        self.prof.pop('Skills')
+        self.prof.pop('Quests')
+        self.prof.pop('InsuredItems')
+        self.prof.pop('ConditionCounters')
+        self.prof.pop('Stats')
+        pprint(self.prof)
+        info = self.prof.get('Info')
+        self.nickname = info.get('Nickname')
+        self.lvl = info.get('Level')
+        self.surv_class = self.prof.get('SurvivorClass')
+        self.is_scav = info.get('Side') == 'Savage'
+        self.side = info.get('Side')
+
+        print(f'OBS POS: {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}')
+
+    def __str__(self):
+        return f'[{self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}'
+
+    def read_rot(self):
+        return {
+            'a': self.data.read_f32(),
+            'b': self.data.read_f32(),
+            'c': self.data.read_f32(),
+            'd': self.data.read_f32()
+        }
+
+    def read_pos(self):
+        return {'x': self.data.read_f32(),
+                'y': self.data.read_f32(),
+                'z': self.data.read_f32()}
+
+    def update(self, msg):
+        pass
+
+
 class MsgDecoder:
+    log = logging.getLogger('MsgDecoder')
+
     def __init__(self, transport, ctx):
         self.transport = transport
         self.ctx = ctx
+        self.incoming = ctx['incoming']
+        self.decoded = False
 
     def parse(self, stream):
         # print('parse in MsgDecoder')
@@ -157,6 +252,7 @@ class MsgDecoder:
         # print(f'LEN: {msg["len"]} OP: {self.op_type}')
         # stream.print_rest()
         self.content = msg['content'] = stream.read_bytes(msg['len'])
+        self.try_decode()
         # print(msg)
         self.transport.add_msg(self.ctx, self)
         # print(f'return offset: {stream.bit_offset} / {len(stream.stream)}')
@@ -168,3 +264,38 @@ class MsgDecoder:
             # print(f'After ret: {ret}')
             pass
         return ret
+
+    def read_pos(self):
+        return {'x': self.data.read_f32(),
+                'y': self.data.read_f32(),
+                'z': self.data.read_f32()}
+
+    exit = 1
+    def decode(self):
+        self.data = Stream(self.content)
+        if self.op_type == PLAYER_SPAWN:
+            self.player = Player(self)
+
+            # MsgDecoder.exit -= 1
+            # print(f'PID: {self.pid} CID: {self.cid} POS: {self.pos}')
+        elif self.op_type == OBSERVER_SPAWN:
+            self.player = Player(self)
+            # self.obs = self.deserialize_initial_state()
+            # MsgDecoder.exit -= 1
+            # print(f'PID: {self.pid} CID: {self.cid} POS: {self.pos}')
+        elif self.op_type == OBSERVER_UNSPAWN:
+            self.pid = self.data.read_u32()
+            self.cid = self.data.read_u8()
+            print(f'Unspawn: {PLAYERS[self.cid]}')
+            MsgDecoder.exit -= 1
+        if MsgDecoder.exit <= 0:
+            print('Exit 20')
+            exit(20)
+
+
+    def try_decode(self):
+        try:
+            self.decode()
+            self.decoded = True
+        except Exception as e:
+            self.log.exception('While decode packet')

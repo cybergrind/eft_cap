@@ -119,7 +119,7 @@ class NetworkTransport:
                 self.new_session()
                 return
         else:
-            ctx = {'pck_len': len(packet['data'])}
+            ctx = {'pck_len': len(packet['data']), 'incoming': packet['incoming']}
 
             b_cps, stream = split(stream, 6)
             # print(f'Parse: {b_cps}')
