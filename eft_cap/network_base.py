@@ -4,6 +4,8 @@
 import asyncio
 import logging
 import struct
+from collections import defaultdict
+
 from eft_cap.msg_level import MsgDecoder
 from eft_cap import bprint
 import pickle
@@ -68,6 +70,7 @@ class NetworkTransport:
         self.src = src
         self.acks_in = Acks('inbound')
         self.acks_out = Acks('outbound')
+        self.fragmented = defaultdict(dict)
 
     async def run(self, limit=None):
         # packet -> {'data', 'incoming'}
@@ -84,9 +87,14 @@ class NetworkTransport:
                 self.log.exception(f'When process_packet: {packet}')
                 with open('error.packet', 'wb') as f:
                     pickle.dump(packet, f)
+                bprint(packet['data'])
+                print('Exit 19')
+                exit(19)
+
 
     def process_packet(self, packet):
         packet['len'] = len(packet['data'])
+        packet['num'] = self.packet_num
         self.curr_packet = packet
         stream = packet['data']
         (conn, ) = struct.unpack('>H', stream[:2])
@@ -122,6 +130,7 @@ class NetworkTransport:
                     self.new_session()
         if len(stream) > 0:
             self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
+            exit(16)
 
     def add_msg(self, ctx, msg=None):
         ctx.setdefault('message', []).append({
@@ -141,6 +150,7 @@ class NetworkTransport:
             channel_id = ctx['channel_id']
             msg_len = ctx['msg_len']
             assert msg_len == len(stream), f'{msg_len} vs {len(stream)}'
+            print(f'FF message: len={msg_len} stream len={len(stream)}')
             order_id, stream = split_16(stream)
 
             while True:
@@ -149,27 +159,42 @@ class NetworkTransport:
                     return
                 inner_channel_id = stream[0]
                 if inner_channel_id in FRAGMENTED:
-                    bprint(stream)
+                    # bprint(stream)
                     stream = self.extractMessageHeader(stream, ctx)
                     inner_msg_len = ctx['msg_len']
+                    fragm_stream, stream = split(stream, inner_msg_len)
                     print(f'IMSGLEN: {inner_msg_len} vs {len(stream)}')
-                    assert inner_msg_len == len(stream)
-                    bfrag, stream = split(stream, 3)
+                    assert inner_msg_len <= len(fragm_stream)
+                    bfrag, fragm_stream = split(fragm_stream, 3)
                     frag_id, frag_idx, frag_amnt = struct.unpack('>BBB', bfrag)
                     print(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
                     # _, stream = split(stream, 4)
+                    self.fragmented[frag_id][frag_idx] = fragm_stream
                     if frag_idx == frag_amnt - 1:
-                        # TODO: assemble fragments
-                        print('Parse')
-                        bprint(stream)
-                        msg = MsgDecoder(self, ctx)
-                        stream = msg.parse(stream)
-                        print(f'After parse: {stream}')
+                        fragments = []
+                        for i in range(frag_amnt):
+                            fragments.append(self.fragmented[frag_id][i])
+                        bin_msg = b''.join(fragments)
+                        print('Assemble ')
+                        # bprint(bin_msg)
+                        while len(bin_msg) > 2:
+                            msg = MsgDecoder(self, ctx)
+                            bin_msg = msg.parse(bin_msg)
+                            print(f'Processed message in fragmented. Remains: {len(bin_msg)}')
+                            yield True, msg
+                        print(f'After parse: {bin_msg}')
+                        if bin_msg != b'':
+                            print(self.curr_packet)
+                            print('Exit 15')
+                            exit(15)
+                        assert bin_msg == b''
+                        print(f'Msg: {msg.op_type}')
                         yield True, msg
                     else:
-                        print(f'Fragmented: {self.curr_packet}')
                         yield False, stream
                 else:
+                    print('Exit 18')
+                    exit(18)
                     stream = self.extractMessageHeader(stream, ctx)
                     inner_msg_len = ctx['msg_len']
                     print(f'Inner channel id: {inner_channel_id} / Rest len: {len(stream)}')
@@ -181,12 +206,18 @@ class NetworkTransport:
                         msg = MsgDecoder(self, ctx).parse(stream)
                     except Exception as e:
                         self.log.exception('MSG DECODER')
+                        print('Exit 13')
                         exit(13)
                     yield True, msg
-            exit(13)
+            print('Exit 14')
+            exit(14)
         if channel_id in (M_MSG_COMBINED, M_MSG_DELIMITER):
+            print('Exit 4')
             exit(4)
             return False, stream
+        print('Exit 18')
+        raise Exception
+        exit(18)
         return self.extractMessage(stream, ctx)
 
     def extractMessageHeader(self, stream, ctx):
@@ -203,9 +234,12 @@ class NetworkTransport:
         return stream
 
     def extractMessage(self, stream, ctx):
+        print('Exit 19')
+        exit(19)
         stream = self.extractMessageHeader(stream, ctx)
         return MsgDecoder(self, ctx).parse(stream)
 
     def new_session(self):
         """Called when new game has started"""
         print('New session')
+        self.fragmented = defaultdict(dict)

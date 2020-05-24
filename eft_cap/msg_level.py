@@ -121,6 +121,8 @@ class Stream:
         if required > remains:
             self.print_rest()
             print(f'Read: {num_bytes}')
+            print('Exit 17')
+            exit(17)
             raise ParsingError(f'Need: {required} Remains: {remains} Offset: {self.bit_offset}')
         assert self.bit_offset % 8 == 0
         boff = int(self.bit_offset / 8)
@@ -148,18 +150,21 @@ class MsgDecoder:
         self.ctx = ctx
 
     def parse(self, stream):
-        print('parse')
-        bprint(stream)
+        print('parse in MsgDecoder')
+        # bprint(stream)
         stream = Stream(stream)
         msg = {}
         self.len = msg['len'] = stream.read_u16()
         self.op_type = msg['op_type'] = stream.read_u16()
-        print(f'LEN: {msg["len"]}')
-        stream.print_rest()
-        msg['content'] = stream.read_bytes(msg['len'])
-        print(msg)
-        self.transport.add_msg(self.ctx, msg)
+        print(f'LEN: {msg["len"]} OP: {self.op_type}')
+        # stream.print_rest()
+        self.content = msg['content'] = stream.read_bytes(msg['len'])
+        # print(msg)
+        self.transport.add_msg(self.ctx, self)
         print(f'return offset: {stream.bit_offset} / {len(stream.stream)}')
         ret = stream.rest
-        print(f'after ret: {ret}')
+        if len(ret) > 60:
+            print(f'after ret: {ret[:60]} ....')
+        else:
+            print(f'After ret: {ret}')
         return ret
