@@ -100,6 +100,9 @@ class NetworkTransport:
         packet['num'] = self.packet_num
         self.curr_packet = packet
         stream = packet['data']
+        if len(stream) < 3:
+            print(f'Skip packet. Length < 3')
+            return
         (conn, ) = struct.unpack('>H', stream[:2])
         if conn == 0:
             op = stream[2]
