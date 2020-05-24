@@ -13,7 +13,7 @@ import pickle
 
 Z_HEARTBEAT = 0x4
 Z_INIT = 0x1
-Z_SKIP = [Z_HEARTBEAT]
+Z_SKIP = []
 
 M_MSG_DELIMITER = 255
 M_MSG_COMBINED = 254
@@ -67,6 +67,7 @@ class NetworkTransport:
     log = logging.getLogger('NetworkTransport')
 
     def __init__(self, src):
+        self.session_ok = []
         self.src = src
         self.acks_in = Acks('inbound')
         self.acks_out = Acks('outbound')
@@ -104,6 +105,13 @@ class NetworkTransport:
             op = stream[2]
             if op in Z_SKIP:
                 return
+            elif op == Z_HEARTBEAT:
+                assert len(stream) == 27
+                if len(stream) == 27:
+                    sess_id, = struct.unpack('<H', stream[25:])
+                    if sess_id not in self.session_ok:
+                        self.session_ok.append(sess_id)
+                return
             elif op == Z_INIT:
                 self.new_session()
                 return
@@ -113,6 +121,10 @@ class NetworkTransport:
             b_cps, stream = split(stream, 6)
             # print(f'Parse: {b_cps}')
             (connection_id, packet_id, session_id) = struct.unpack('>HHH', b_cps)
+            if session_id not in self.session_ok:
+                print(f'Skip packet, no session: {session_id} vs {self.session_ok}')
+                print(self.curr_packet)
+                return
             ctx.update({
                 'connection_id': connection_id,
                 'packet_id': packet_id,
