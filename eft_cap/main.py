@@ -49,7 +49,7 @@ def from_file():
 def main():
     p_source = from_file()
     t = NetworkTransport(p_source)
-    asyncio.run(t.run(limit=None))
+    asyncio.run(t.run(limit=5))
 
 if __name__ == '__main__':
     main()

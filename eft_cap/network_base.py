@@ -16,15 +16,21 @@ Z_SKIP = [Z_HEARTBEAT]
 M_MSG_DELIMITER = 255
 M_MSG_COMBINED = 254
 CHAN_MAX = 207
+FRAGMENTED = [0, 1, 2]
 
 
 def split(data, num_bytes):
     return data[:num_bytes], data[num_bytes:]
 
 
-def split_byte(data):
+def split_8(data):
     byte, ret = split(data, 1)
     return byte[0], ret
+
+
+def split_16(data):
+    two_bytes, ret = split(data, 2)
+    return struct.unpack('>H', two_bytes)[0], ret
 
 
 class Acks:
@@ -80,6 +86,7 @@ class NetworkTransport:
                     pickle.dump(packet, f)
 
     def process_packet(self, packet):
+        packet['len'] = len(packet['data'])
         self.curr_packet = packet
         stream = packet['data']
         (conn, ) = struct.unpack('>H', stream[:2])
@@ -108,16 +115,11 @@ class NetworkTransport:
                 self.log.warning(f'Error message: {stream}')
                 return True
 
-            while True:
-                has_packet, stream = self.get_next_message(stream, ctx)
-                print(f'HAS_PACKET: {has_packet}')
-                if has_packet:
-                    stream = MsgDecoder(self, ctx).parse(stream)
-                else:
-                    if len(stream) > 0:
-                        self.log.warning(f'Cannot parse rest: {ctx}')
-                        bprint(stream)
-                    break
+            for (msg_ok, msg) in self.get_next_message(stream, ctx):
+                if not msg_ok:
+                    stream = msg
+                elif msg.op_type == 147:  # ServerInit
+                    self.new_session()
         if len(stream) > 0:
             self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
 
@@ -125,33 +127,70 @@ class NetworkTransport:
         ctx.setdefault('message', []).append({
             'channel_id': ctx['channel_id'],
             'msg_len': ctx['msg_len'],
-            'msg_id': ctx['msg_id'],
+            # 'msg_id': ctx['msg_id'],
             'msg': msg,
         })
 
     def get_next_message(self, stream, ctx):
+        # https://forum.unity.com/threads/binary-protocol-specification.417831/#post-3495130
         channel_id = stream[0]
         print(f'CHID: {channel_id}')
         if channel_id == M_MSG_DELIMITER:
             stream = self.extractMessageHeader(stream, ctx)
-            (msg_id,) = struct.unpack('>H', stream[:2])
-            acks = self.acks_in if self.curr_packet['incoming'] else self.acks_out
-            ctx['msg_id'] = msg_id
-            if not acks.read_message(msg_id):
-                print('Recur 1')
-                exit(5)
-                return self.get_next_message(stream, ctx)
-            b_header, stream = split(stream, 2)
-            print('Recur 2')
-            self.add_msg(ctx)
-            return self.get_next_message(stream, ctx)
+            # channel_id + msg_len
+            channel_id = ctx['channel_id']
+            msg_len = ctx['msg_len']
+            assert msg_len == len(stream), f'{msg_len} vs {len(stream)}'
+            order_id, stream = split_16(stream)
+
+            while True:
+                if len(stream) == 0:
+                    yield False, stream
+                    return
+                inner_channel_id = stream[0]
+                if inner_channel_id in FRAGMENTED:
+                    bprint(stream)
+                    stream = self.extractMessageHeader(stream, ctx)
+                    inner_msg_len = ctx['msg_len']
+                    print(f'IMSGLEN: {inner_msg_len} vs {len(stream)}')
+                    assert inner_msg_len == len(stream)
+                    bfrag, stream = split(stream, 3)
+                    frag_id, frag_idx, frag_amnt = struct.unpack('>BBB', bfrag)
+                    print(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
+                    # _, stream = split(stream, 4)
+                    if frag_idx == frag_amnt - 1:
+                        # TODO: assemble fragments
+                        print('Parse')
+                        bprint(stream)
+                        msg = MsgDecoder(self, ctx)
+                        stream = msg.parse(stream)
+                        print(f'After parse: {stream}')
+                        yield True, msg
+                    else:
+                        print(f'Fragmented: {self.curr_packet}')
+                        yield False, stream
+                else:
+                    stream = self.extractMessageHeader(stream, ctx)
+                    inner_msg_len = ctx['msg_len']
+                    print(f'Inner channel id: {inner_channel_id} / Rest len: {len(stream)}')
+                    if len(stream) == 0:
+                        yield False, stream
+                        return
+                    (msg_stream, stream) = split(stream, inner_msg_len)
+                    try:
+                        msg = MsgDecoder(self, ctx).parse(stream)
+                    except Exception as e:
+                        self.log.exception('MSG DECODER')
+                        exit(13)
+                    yield True, msg
+            exit(13)
         if channel_id in (M_MSG_COMBINED, M_MSG_DELIMITER):
             exit(4)
             return False, stream
         return self.extractMessage(stream, ctx)
 
     def extractMessageHeader(self, stream, ctx):
-        channel_id, stream = split_byte(stream)
+        channel_id, stream = split_8(stream)
         ctx['channel_id'] = channel_id
         b_len = stream[0]
         if b_len & 0x80:
@@ -159,23 +198,14 @@ class NetworkTransport:
             (msg_len,) = struct.unpack('>H', b_len)
             msg_len &= 0x7fff  # reset high bit
         else:
-            msg_len, stream = split_byte(stream)
+            msg_len, stream = split_8(stream)
         ctx['msg_len'] = msg_len
         return stream
 
     def extractMessage(self, stream, ctx):
         stream = self.extractMessageHeader(stream, ctx)
-        print(ctx)
-        bprint(stream)
-        msg_len = ctx['msg_len']
-        if msg_len > len(stream):
-            print(f'Pckt: {self.packet_num} Len: {len(self.curr_packet["data"])}')
-            return False, stream
-        print(f'exit: {self.packet_num} / len: {len(self.curr_packet["data"])} / {self.curr_packet["data"]}')
-        return True, stream
-        exit(1)
-        # checkLengthIsValid
+        return MsgDecoder(self, ctx).parse(stream)
 
     def new_session(self):
         """Called when new game has started"""
-        pass
+        print('New session')

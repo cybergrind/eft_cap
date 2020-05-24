@@ -59,7 +59,7 @@ def to_bits(byte):
 
 def to_byte(bits):
     # big endian bits
-    assert len(bits) == 8
+    assert len(bits) == 8, bits
     out = 0
     for i in range(8):
         out += bits[i] << 7 - i
@@ -77,12 +77,17 @@ class Stream:
     def rest(self):
         assert len(self.stream[self.bit_offset:]) % 8 == 0, f'Off: {self.bit_offset}'
         bytes_list = []
-        i = 0
-        while i * 8 < len(self.stream):
-            idx = i * 8
+        i = self.bit_offset
+        while i < len(self.stream):
+            idx = i
             bytes_list.append(to_byte(self.stream[idx:idx + 8]))
-            i += 1
+            i += 8
         return bytes(bytes_list)
+
+    def print_rest(self):
+        bit = self.bit_offset
+        bprint(self.rest)
+        self.bit_offset = bit
 
     def read_l_bits(self, bits):
         """
@@ -111,10 +116,12 @@ class Stream:
             return acc
 
     def read_bytes(self, num_bytes):
-        required = self.bit_offset + num_bytes * 8
+        required = num_bytes * 8
         remains = len(self.stream) - self.bit_offset
         if required > remains:
-            raise ParsingError(f'Need: {required} Remains: {remains}')
+            self.print_rest()
+            print(f'Read: {num_bytes}')
+            raise ParsingError(f'Need: {required} Remains: {remains} Offset: {self.bit_offset}')
         assert self.bit_offset % 8 == 0
         boff = int(self.bit_offset / 8)
         print(f'Get bytes: {num_bytes} BOFF: {boff} OFF: {boff + num_bytes}')
@@ -145,12 +152,14 @@ class MsgDecoder:
         bprint(stream)
         stream = Stream(stream)
         msg = {}
-        msg['len'] = stream.read_u16()
+        self.len = msg['len'] = stream.read_u16()
+        self.op_type = msg['op_type'] = stream.read_u16()
         print(f'LEN: {msg["len"]}')
+        stream.print_rest()
         msg['content'] = stream.read_bytes(msg['len'])
         print(msg)
         self.transport.add_msg(self.ctx, msg)
-        print('return')
+        print(f'return offset: {stream.bit_offset} / {len(stream.stream)}')
         ret = stream.rest
-        print('after ret')
+        print(f'after ret: {ret}')
         return ret
