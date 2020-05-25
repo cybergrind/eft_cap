@@ -96,7 +96,7 @@ def main():
         next(p_source)
     t = NetworkTransport(p_source)
     loop = asyncio.get_event_loop()
-    app = App(loop)
+    # app = App(loop)
     loop.run_until_complete(t.run(limit=None))
 
 if __name__ == '__main__':

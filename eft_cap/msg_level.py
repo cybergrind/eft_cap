@@ -28,7 +28,6 @@ GAME_UPDATE = 170
 
 def bits_required(min_value, max_value):
     assert max_value > min_value
-
     return math.ceil(
         math.log2(max_value - min_value)
     )
@@ -74,7 +73,17 @@ def to_byte(bits):
     out = 0
     for i in range(8):
         out += bits[i] << 7 - i
+    # print(f'Bits {bits} => {out}')
     return out
+
+
+def bits_to_bytes(bits):
+    assert len(bits) % 8 == 0, len(bits)
+    out = []
+    for i in range(len(bits) // 8):
+        out.append(to_byte(bits[i*8:i*8+8]))
+    return bytes(out)
+
 
 def euler_to_quaternion(roll, pitch, yaw):
     qx = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(roll / 2) * math.sin(
@@ -103,6 +112,16 @@ def quaternion_to_euler(x, y, z, w):
     return {'x': yaw, 'y': pitch, 'z': roll}
 
 
+def packed(fmt, single=True):
+    def _wrapped(func):
+        def _inner(*args, **kwargs):
+            bin_resp = func(*args, **kwargs)
+            unpacked = struct.unpack(fmt, bin_resp)
+            return unpacked[0] if single else unpacked
+        return _inner
+    return _wrapped
+
+
 class Stream:
     def __init__(self, stream):
         self.bit_offset = 0
@@ -112,12 +131,16 @@ class Stream:
 
     @property
     def rest(self):
-        assert len(self.stream[self.bit_offset:]) % 8 == 0, f'Off: {self.bit_offset}'
+        # assert len(self.stream[self.bit_offset:]) % 8 == 0, f'Off: {self.bit_offset}'
         bytes_list = []
         i = self.bit_offset
         while i < len(self.stream):
             idx = i
-            bytes_list.append(to_byte(self.stream[idx:idx + 8]))
+            byte_bits = self.stream[idx:idx + 8]
+            if len(byte_bits) == 8:
+                bytes_list.append(to_byte(byte_bits))
+            else:
+                print(f'Cannot unpack: {byte_bits} into byte. Skipping')
             i += 8
         return bytes(bytes_list)
 
@@ -126,87 +149,100 @@ class Stream:
         bprint(self.rest)
         self.bit_offset = bit
 
-    def read_l_bits(self, bits):
-        """
-        little endian bits
-        """
-        assert bits <= 8
-        out = 0
-        for i in range(bits):
-            # out += self.stream[self.bit_offset] << i  # reversed order
-            shift = bits - 1 - i
-            # shift = i
-            num = self.stream[self.bit_offset] << shift
-            # print(f'Shift => {shift} : Num: {num}')
-            out += num
-            self.bit_offset += 1
-        return out
-
     def read_bits(self, bits):
-        if bits <= 8:
-            return self.read_l_bits(bits)
+        assert bits < 33
+        new_offset = self.bit_offset + bits
+        tmp_bits = self.stream[self.bit_offset:self.bit_offset+bits]
+        self.bit_offset += bits
+        if bits == 1:
+            print(f'Read 1 bit => {tmp_bits}')
+            return tmp_bits[0]
+        elif bits < 9:
+            target = 8
+            fmt = '<B'
+        elif bits < 17:
+            target = 16
+            fmt = '<H'
         else:
-            acc = 0
-            for i in range(bits // 8):
-                acc += self.read_l_bits(8)
-            acc += self.read_l_bits(bits % 8)
-            return acc
+            target = 32
+            fmt = '<I'
+        need_append = target - bits
+        left_append = 8 - bits % 8 if bits % 8 != 0 else 0
+        right_append = need_append - left_append
+        left = array('B', [0 for i in range(left_append)])
+        right = array('B', [0 for i in range(right_append)])
+        if len(tmp_bits) < 8:
+            int_bits = left + tmp_bits + right
+        else:
+            # left_bits + left_append + right_bits
+            move_to_right = bits % 8
+            left_bits = tmp_bits[:-move_to_right]
+            right_bits = tmp_bits[-move_to_right:]
+            int_bits = left_bits + left + right_bits + right
+        tmp_bytes = bits_to_bytes(int_bits)
+        ret = struct.unpack(fmt, tmp_bytes)[0]
+        print(f'Tmp Bits: {bits} => {tmp_bits} => {int_bits} => {tmp_bytes} => {ret}')
+
+        return ret
 
     def read_limited_bits(self, min_value=0, max_value=1):
         required = bits_required(min_value, max_value)
-        return self.read_bits(required) + min_value
+        print(f'Bits: {self.stream[self.bit_offset:self.bit_offset + required]}')
+        read = self.read_bits(required)
+        ret = read + min_value
+        print(f'Required bits: {required} {read} {ret}')
+        return ret
 
     def read_bytes(self, num_bytes):
+
         required = num_bytes * 8
         remains = len(self.stream) - self.bit_offset
         if required > remains:
             self.print_rest()
             print(f'Read: {num_bytes}')
             raise ParsingError(f'Need: {required} Remains: {remains} Offset: {self.bit_offset}')
-        assert self.bit_offset % 8 == 0
-        boff = int(self.bit_offset / 8)
-        # print(f'Get bytes: {num_bytes} BOFF: {boff} OFF: {boff + num_bytes}')
-        resp = self.orig_stream[boff:(boff + num_bytes)]
-        self.bit_offset += num_bytes * 8
-        return resp
+        if self.aligned:
+            assert self.bit_offset % 8 == 0
+            boff = int(self.bit_offset / 8)
+            # print(f'Get bytes: {num_bytes} BOFF: {boff} OFF: {boff + num_bytes}')
+            resp = self.orig_stream[boff:(boff + num_bytes)]
+            self.bit_offset += num_bytes * 8
+            return resp
+        else:
+            return bytes([self.read_bits(8) for i in range(num_bytes)])
 
     def read_u8(self):
         return self.read_bits(8)
 
+    @packed('<H')
     def read_u16(self):
-        b1 = self.read_bits(8)
-        b2 = self.read_bits(8) << 8
-        # print(f'B1: {b1} B2: {b2}')
-        return b1 + b2
+        return self.read_bytes(2)
 
+    @packed('<I')
     def read_u32(self):
-        return (
-            self.read_bits(8) +
-            self.read_bits(8) << 8 +
-            self.read_bits(8) << 16 +
-            self.read_bits(8) << 24
-        )
+        return self.read_bytes(4)
 
+    @packed('<Q')
     def read_u64(self):
-        return struct.unpack('<Q', self.read_bytes(8))[0]
+        return self.read_bytes(8)
 
+    @property
+    def aligned(self):
+        return self.bit_offset % 8 == 0
+
+    @packed('<f')
     def read_f32(self):
-        if self.bit_offset % 8 == 0:
-            bf32 = self.read_bytes(4)
-        else:
-            bf32 = bytes([self.read_bits(8),
-                          self.read_bits(8),
-                          self.read_bits(8),
-                          self.read_bits(8)])
-        return struct.unpack('<f', bf32)[0]
+        return self.read_bytes(4)
 
     def reset(self):
         self.bit_offset = 0
+
 
 GLOBAL = {
     'map': None,
 }
 PLAYERS = {}
+
 
 class ParsingMethods:
     def read_size_and_bytes(self):
@@ -296,12 +332,14 @@ class Player(ParsingMethods):
         self.lvl = info.get('Level')
         self.surv_class = self.prof.get('SurvivorClass')
         self.is_scav = info.get('Side') == 'Savage'
-        self.side = info.get('Side')
+        self.is_npc = self.is_scav and self.lvl == 1
+        side = info.get('Side')
+        self.side = 'SCAV' if side == 'Savage' else side
 
         print(f'OBS POS: {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}')
 
     def __str__(self):
-        return f'[{self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}'
+        return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}'
 
     def update(self, msg, data):
         self.msg = msg
@@ -312,15 +350,29 @@ class Player(ParsingMethods):
         args = {'min_value': 1, 'max_value': 5}
         if self.data.read_bits(1) == 0:
             args = {'min_value': 0, 'max_value': 2097151}
+            # args = {'max_value': 1037149}  # < 20 bit
         num = self.data.read_limited_bits(**args)
+
         game_time = self.data.read_f32()
         # print(f'Time: {game_time}')
         is_disconnected = self.data.read_bits(1)
+        print(f'OFFST: {self.data.bit_offset}')
+        is_alive = self.data.read_bits(1)
+        print(f'Num is {num} GT: {game_time} Disc: {is_disconnected} IsALIVE: {is_alive} {self}')
+        print(self.msg.transport.curr_packet)
 
-        if self.data.read_bits(1) != 1:
+        if not is_alive:
             # probably not died but not alive yet
-            # print(f'Died: {self}')
+            print(f'Died: {self} Disconnected: {is_disconnected}')
             # self.died = True
+            # inv_hash = self.data.read_u32()
+            # time = self.data.read_u64()
+            print(self.data.rest)
+            print(self.data.orig_stream)
+            if not is_disconnected and self.msg.transport.curr_packet['num'] >= 977:
+                exit(1000)
+
+            # exit(1000)
             pass
         else:
             self.update_position()
@@ -370,9 +422,6 @@ class Player(ParsingMethods):
             self.rot['x'] = qx.read(self.data)
             self.rot['y'] = qy.read(self.data)
             # print(f'Rotated: {before} => {self.rot}')
-
-
-
 
 
 class MsgDecoder(ParsingMethods):
@@ -428,10 +477,11 @@ class MsgDecoder(ParsingMethods):
         elif self.op_type == OBSERVER_UNSPAWN:
             self.pid = self.data.read_u32()
             self.cid = self.data.read_u8()
-            print(f'Unspawn: {PLAYERS[self.cid]}')
+            print(f'Exit: {PLAYERS[self.cid]}')
+            del PLAYERS[self.cid]
+            exit(0)
             # MsgDecoder.exit -= 1
         elif self.op_type == GAME_UPDATE:
-
             up_bin = self.read_size_and_bytes()
             up_data = Stream(up_bin)
             if not self.ctx['incoming']:
