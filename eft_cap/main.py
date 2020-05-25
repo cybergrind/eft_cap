@@ -2,6 +2,8 @@ import asyncio
 from pprint import pprint
 import sys
 import json
+import tkinter as tk
+import time
 
 sys.path.append('.')
 
@@ -47,13 +49,55 @@ def from_file():
             'incoming': ip['ip.dst'].startswith('192.168.88.')
         }
 
+class App(tk.Tk):
+    def __init__(self, loop):
+        self.loop = loop
+        self.__cells = []
+        super().__init__()
+
+        loop.create_task(self.update_loop())
+        self.draw_table(
+            [f'Head: {i}' for i in range(10)],
+            [[f'Inner: {x}/{y}' for x in range(10)] for y in range(6)]
+        )
+
+    def draw_table(self, headers, rows):
+        for w in self.__cells:
+            w.destroy()
+        self.__cells = []
+        for header_col, text in enumerate(headers):
+            self.draw_cell(0, header_col, text)
+        for row_1, row in enumerate(rows):
+            for col, text in enumerate(row):
+                self.draw_cell(row_1 + 1, col, text)
+
+    def draw_cell(self, row, col, text):
+        b = tk.Label(self, text=f' {text} ', borderwidth=1, relief='groove')
+        b.grid(row=row, column=col)
+        self.__cells.append(b)
+
+    async def update_loop(self):
+        while True:
+            print('Update loop')
+            self.draw_table(
+                [f'Head: {i}' for i in range(10)],
+                [[f'Inner: {x}/{y}/ {time.time()}' for x in range(10)] for y in range(6)]
+            )
+            self.update()
+            await asyncio.sleep(1)
+
+    def destroy(self):
+        self.loop.stop()
+        super().destroy()
 
 def main():
     p_source = from_file()
     for i in range(0):
         next(p_source)
     t = NetworkTransport(p_source)
-    asyncio.run(t.run(limit=None))
+    loop = asyncio.get_event_loop()
+    app = App(loop)
+    loop.run_until_complete(t.run(limit=None))
 
 if __name__ == '__main__':
     main()
