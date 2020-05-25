@@ -33,6 +33,8 @@ def bits_required(min_value, max_value):
         math.log2(max_value - min_value)
     )
 
+Q_LOW = 0.001953125
+Q_HIGH = 0.0009765625
 
 class FloatQuantizer:
     def __init__(self, min_value, max_value, resolution):
@@ -43,11 +45,11 @@ class FloatQuantizer:
         self.max_int = math.ceil((self.max_value - self.min_value) / self.resolution)
         self.bits_require = bits_required(0, self.max_int)
 
-    def bits_require(self):
-        return bits_required(0, self.max_int)
-
     def dequantize_float(self, int_value):
         return int_value / float(self.max_int) * self.delta + self.min_value
+
+    def read(self, stream):
+        return self.dequantize_float(stream.read_bits(self.bits_require))
 
 
 def decode_xyz(stream):
@@ -73,6 +75,32 @@ def to_byte(bits):
     for i in range(8):
         out += bits[i] << 7 - i
     return out
+
+def euler_to_quaternion(roll, pitch, yaw):
+    qx = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(roll / 2) * math.sin(
+        pitch / 2) * math.sin(yaw / 2)
+    qy = math.cos(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.cos(
+        pitch / 2) * math.sin(yaw / 2)
+    qz = math.cos(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2) - math.sin(roll / 2) * math.sin(
+        pitch / 2) * math.cos(yaw / 2)
+    qw = math.cos(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.sin(
+        pitch / 2) * math.sin(yaw / 2)
+
+    return [qx, qy, qz, qw]
+
+
+def quaternion_to_euler(x, y, z, w):
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll = math.degrees(math.atan2(t0, t1))
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch = math.degrees(math.asin(t2))
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw = math.degrees(math.atan2(t3, t4))
+    return {'x': yaw, 'y': pitch, 'z': roll}
 
 
 class Stream:
@@ -187,10 +215,10 @@ class ParsingMethods:
 
     def read_rot(self):
         return {
-            'a': self.data.read_f32(),
-            'b': self.data.read_f32(),
-            'c': self.data.read_f32(),
-            'd': self.data.read_f32()
+            'x': self.data.read_f32(),
+            'y': self.data.read_f32(),
+            'z': self.data.read_f32(),
+            'w': self.data.read_f32()
         }
 
     def read_pos(self):
@@ -245,7 +273,7 @@ class Player(ParsingMethods):
         unk2 = self.data.read_u8()
         unk3 = self.data.read_u8() == 1
         self.pos = self.read_pos()
-        self.rot = self.read_rot()
+        self.rot = quaternion_to_euler(**self.read_rot())
         in_prone = self.data.read_u8() == 1
         pose_lvl = self.data.read_f32()
 
@@ -277,9 +305,10 @@ class Player(ParsingMethods):
 
     def update(self, msg, data):
         self.msg = msg
-        self.data = data
+        self.data = data  # type: Stream
         if self.me:
             print(f'Skip myself {self}')
+            return
         args = {'min_value': 1, 'max_value': 5}
         if self.data.read_bits(1) == 0:
             args = {'min_value': 0, 'max_value': 2097151}
@@ -295,16 +324,54 @@ class Player(ParsingMethods):
             pass
         else:
             self.update_position()
+            self.update_rotation()
 
+    exit = math.inf
     def update_position(self):
-        print(f'Update {self} Incoming: {self.msg.ctx["incoming"]}')
-        last_pos = self.pos
+        last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
+        print(f'Update {self} Read: {read} ME: {self.me}')
         if read:
             partial = self.data.read_bits(1) == 1
             if partial:
-                pass
-            pass
+                q_x = FloatQuantizer(-1, 1, Q_LOW)
+                q_y = FloatQuantizer(-1, 1, Q_HIGH)
+                q_z = FloatQuantizer(-1, 1, Q_LOW)
+            else:
+                curr_map = GLOBAL['map']  # type: Map
+                _min = curr_map.bound_min
+                _max = curr_map.bound_max
+                q_x = FloatQuantizer(_min['x'], _max['x'], Q_LOW)
+                q_y = FloatQuantizer(_min['y'], _max['y'], Q_HIGH)
+                q_z = FloatQuantizer(_min['z'], _max['z'], Q_LOW)
+            dx = q_x.read(self.data)
+            dy = q_y.read(self.data)
+            dz = q_z.read(self.data)
+
+            self.pos['x'] = last_pos['x'] + dx
+            self.pos['y'] = last_pos['y'] + dy
+            self.pos['z'] = last_pos['z'] + dz
+
+
+            print(f'Moved: {last_pos} => {self.pos}')
+
+            Player.exit -= 1
+            if Player.exit <= 0:
+                print('exit 0')
+                exit(0)
+        else:
+            print(f'Rest is: {self.data.bit_offset} Size: {len(self.data.stream)}')
+
+    def update_rotation(self):
+        if self.data.read_u8():
+            qx = FloatQuantizer(0, 360, 0.015625)
+            qy = FloatQuantizer(-90, 90, 0.015625)
+            before = copy.copy(self.rot)
+            self.rot['x'] = qx.read(self.data)
+            self.rot['y'] = qy.read(self.data)
+            # print(f'Rotated: {before} => {self.rot}')
+
+
 
 
 
