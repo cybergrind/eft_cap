@@ -170,16 +170,22 @@ class NetworkTransport:
             # channel_id + msg_len
             channel_id = ctx['channel_id']
             msg_len = ctx['msg_len']
-            assert msg_len == len(stream), f'{msg_len} vs {len(stream)}'
+            print(ctx)
+            assert msg_len <= len(stream), f'{msg_len} vs {len(stream)}'
             # print(f'FF message: len={msg_len} stream len={len(stream)}')
+            stream, after = split(stream, msg_len)
             order_id, stream = split_16(stream)
             # 78084
             # oid, stream = split_8(stream)
 
             while True:
                 if len(stream) == 0:
-                    yield False, stream
-                    return
+                    if after:
+                        yield from self.get_next_message(after, ctx)
+                        return
+                    else:
+                        yield False, stream
+                        return
                 inner_channel_id = stream[0]
                 if inner_channel_id in FRAGMENTED:
                     # bprint(stream)

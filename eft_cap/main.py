@@ -37,7 +37,7 @@ def n_separated_file(name):
 
 
 def from_file():
-    for packet in n_separated_file('./shark_cap/cap_03.json'):
+    for packet in n_separated_file('./shark_cap/cap_04.json'):
         udp = packet["_source"]["layers"]['udp']
         ip = packet["_source"]["layers"]['ip']
         if 'data' not in packet["_source"]["layers"]:

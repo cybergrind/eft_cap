@@ -1,3 +1,4 @@
+from __future__ import annotations
 import copy
 import logging
 import math
@@ -8,8 +9,11 @@ import zlib
 import json
 from pprint import pprint
 import time
+from typing import TYPE_CHECKING
 
 from eft_cap import bprint, ParsingError
+if TYPE_CHECKING:
+    from eft_cap.network_base import NetworkTransport
 
 
 
@@ -24,6 +28,19 @@ OBSERVER_SPAWN = 157
 OBSERVER_UNSPAWN = 158
 BATTL_EEYE = 168
 GAME_UPDATE = 170
+
+
+def bin_print(b_str):
+    for idx in range(len(b_str)):
+        bin_str = bin(b_str[idx])[2:]
+        if len(bin_str) < 8:
+            bin_str = ''.join(['0' for i in range(8 - len(bin_str))]) + bin_str
+        print(bin_str, end='\n' if idx % 4 == 3 else ' ')
+
+def bin_dump(b_str):
+    bitstring = itertools.chain.from_iterable([to_bits(one_byte) for one_byte in b_str])
+    with open('bin_dump.bin', 'wb') as f:
+        f.write(bytes(bitstring))
 
 
 def bits_required(min_value, max_value):
@@ -149,13 +166,18 @@ class Stream:
         bprint(self.rest)
         self.bit_offset = bit
 
+    def align(self):
+        off = self.bit_offset % 8
+        if off:
+            self.read_bits(off)
+
     def read_bits(self, bits):
         assert bits < 33
         new_offset = self.bit_offset + bits
         tmp_bits = self.stream[self.bit_offset:self.bit_offset+bits]
         self.bit_offset += bits
         if bits == 1:
-            print(f'Read 1 bit => {tmp_bits}')
+            # print(f'Read 1 bit => {tmp_bits}')
             return tmp_bits[0]
         elif bits < 9:
             target = 8
@@ -181,16 +203,16 @@ class Stream:
             int_bits = left_bits + left + right_bits + right
         tmp_bytes = bits_to_bytes(int_bits)
         ret = struct.unpack(fmt, tmp_bytes)[0]
-        print(f'Tmp Bits: {bits} => {tmp_bits} => {int_bits} => {tmp_bytes} => {ret}')
+        # print(f'Tmp Bits: {bits} => {tmp_bits} => {int_bits} => {tmp_bytes} => {ret}')
 
         return ret
 
     def read_limited_bits(self, min_value=0, max_value=1):
         required = bits_required(min_value, max_value)
-        print(f'Bits: {self.stream[self.bit_offset:self.bit_offset + required]}')
+        # print(f'Bits: {self.stream[self.bit_offset:self.bit_offset + required]}')
         read = self.read_bits(required)
         ret = read + min_value
-        print(f'Required bits: {required} {read} {ret}')
+        # print(f'Required bits: {required} {read} {ret}')
         return ret
 
     def read_bytes(self, num_bytes):
@@ -199,7 +221,7 @@ class Stream:
         remains = len(self.stream) - self.bit_offset
         if required > remains:
             self.print_rest()
-            print(f'Read: {num_bytes}')
+            # print(f'Read: {num_bytes}')
             raise ParsingError(f'Need: {required} Remains: {remains} Offset: {self.bit_offset}')
         if self.aligned:
             assert self.bit_offset % 8 == 0
@@ -233,6 +255,17 @@ class Stream:
     @packed('<f')
     def read_f32(self):
         return self.read_bytes(4)
+
+    def read_string(self, max_size = 0):
+        is_null = self.read_bits(1)
+        if is_null:
+            return None
+        out = []
+        self.align()
+        num = self.read_u32()
+        for i in range(num):
+            out.append(self.read_bytes(2))
+        return bytes(out).decode('utf16')
 
     def reset(self):
         self.bit_offset = 0
@@ -307,7 +340,7 @@ class Player(ParsingMethods):
 
     def deserialize_initial_state(self):
         unk2 = self.data.read_u8()
-        unk3 = self.data.read_u8() == 1
+        self.is_alive = self.data.read_u8() == 1
         self.pos = self.read_pos()
         self.rot = quaternion_to_euler(**self.read_rot())
         in_prone = self.data.read_u8() == 1
@@ -339,10 +372,14 @@ class Player(ParsingMethods):
         print(f'OBS POS: {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}')
 
     def __str__(self):
-        return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}'
+        return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}[{self.cid}]'
+
+    def print(self, msg, *args, **kwargs):
+        if self.nickname.startswith('Гога'):
+            print(msg, *args, **kwargs)
 
     def update(self, msg, data):
-        self.msg = msg
+        self.msg = msg  # type: MsgDecoder
         self.data = data  # type: Stream
         if self.me:
             print(f'Skip myself {self}')
@@ -356,21 +393,44 @@ class Player(ParsingMethods):
         game_time = self.data.read_f32()
         # print(f'Time: {game_time}')
         is_disconnected = self.data.read_bits(1)
-        print(f'OFFST: {self.data.bit_offset}')
+        self.print(f'OFFST: {self.data.bit_offset}')
         is_alive = self.data.read_bits(1)
-        print(f'Num is {num} GT: {game_time} Disc: {is_disconnected} IsALIVE: {is_alive} {self}')
-        print(self.msg.transport.curr_packet)
+
+        ctx = self.msg.ctx
+        curr_packet = self.msg.transport.curr_packet
+        msg_det = f'PCKT: {curr_packet["num"]}/{curr_packet["len"]} CID: {ctx["channel_id"]}'
+        self.print(f'Num is {num} GT: {game_time} Disc: {is_disconnected} IsALIVE: {is_alive} {self} {msg_det} Len: {len(self.data.orig_stream)}')
+        self.print(self.data.orig_stream)
+        # if self.msg.transport.curr_packet['num'] >= 977 or (self.msg.ctx['channel_id'] == 9 and is_alive):
+        #     print(self.data.orig_stream)
+        #     exit(1000)
 
         if not is_alive:
             # probably not died but not alive yet
-            print(f'Died: {self} Disconnected: {is_disconnected}')
+            self.print(f'Died: {self} Disconnected: {is_disconnected}')
+            if len(self.data.orig_stream) < 610:
+                return
             # self.died = True
-            # inv_hash = self.data.read_u32()
-            # time = self.data.read_u64()
-            print(self.data.rest)
+
+            try:
+                inv_hash = self.data.read_u32()
+                time = self.data.read_u64()
+                nickname = self.data.read_string(1350)
+                side = self.data.read_u32()
+                status = self.data.read_string(1350)
+                killer = self.data.read_string(1350)
+                lvl = self.data.read_u32()
+                weapon = self.data.read_string()
+                self.print(f'{killer} killed {nickname} with {weapon}.  Msg in: {self}')
+                self.print(self.data.rest)
+                self.print(self.data.orig_stream)
+            finally:
+                pass
             print(self.data.orig_stream)
-            if not is_disconnected and self.msg.transport.curr_packet['num'] >= 977:
-                exit(1000)
+            print('exit 1000')
+            exit(1000)
+            # if self.msg.transport.curr_packet['num'] >= 977:
+            #     exit(1000)
 
             # exit(1000)
             pass
@@ -382,7 +442,7 @@ class Player(ParsingMethods):
     def update_position(self):
         last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
-        print(f'Update {self} Read: {read} ME: {self.me}')
+        self.print(f'Update {self} Read: {read} ME: {self.me}')
         if read:
             partial = self.data.read_bits(1) == 1
             if partial:
@@ -405,7 +465,7 @@ class Player(ParsingMethods):
             self.pos['z'] = last_pos['z'] + dz
 
 
-            print(f'Moved: {last_pos} => {self.pos}')
+            self.print(f'Moved: {last_pos} => {self.pos}')
 
             Player.exit -= 1
             if Player.exit <= 0:
@@ -427,7 +487,7 @@ class Player(ParsingMethods):
 class MsgDecoder(ParsingMethods):
     log = logging.getLogger('MsgDecoder')
 
-    def __init__(self, transport, ctx):
+    def __init__(self, transport: NetworkTransport, ctx: dict):
         self.transport = transport
         self.ctx = ctx
         self.incoming = ctx['incoming']
@@ -479,7 +539,7 @@ class MsgDecoder(ParsingMethods):
             self.cid = self.data.read_u8()
             print(f'Exit: {PLAYERS[self.cid]}')
             del PLAYERS[self.cid]
-            exit(0)
+            # exit(0)
             # MsgDecoder.exit -= 1
         elif self.op_type == GAME_UPDATE:
             up_bin = self.read_size_and_bytes()
@@ -507,7 +567,11 @@ class MsgDecoder(ParsingMethods):
         # 11481 {559} => 4
         # 19204 {316} => 4
         # 24137 {203} => 4
-        if self.channel_id not in PLAYERS:
+
+        # get by `channel_id` or `channel_id - 1`
+        # player = PLAYERS.get(self.channel_id, PLAYERS.get(self.channel_id - 1, None))  # type: Player
+        player = PLAYERS.get(self.channel_id, None)  # type: Player
+        if not player:
             if MsgDecoder.skip_unk_player > 0:
                 MsgDecoder.skip_unk_player -= 1
                 return
@@ -515,7 +579,7 @@ class MsgDecoder(ParsingMethods):
             print(self.transport.curr_packet)
             print('Exit 21')
             exit(21)
-        player = PLAYERS[self.channel_id]
+
         player.update(self, up_data)
         # MsgDecoder.exit -= 1
 
