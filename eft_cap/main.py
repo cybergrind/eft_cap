@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+import argparse
+import logging
 import asyncio
 from pprint import pprint
 import sys
@@ -6,6 +9,20 @@ import tkinter as tk
 import time
 
 sys.path.append('.')
+
+
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+log = logging.getLogger('eft_cap.main')
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='DESCRIPTION')
+    parser.add_argument('packets_file', nargs='?')
+    # parser.add_argument('-m', '--mode', default='auto', choices=['auto', 'manual'])
+    # parser.add_argument('-l', '--ll', dest='ll', action='store_true', help='help')
+    return parser.parse_args()
+
+
 
 # dest 17000:17100
 # src 56000:61000
@@ -22,10 +39,14 @@ def capture():
     import pydivert  # linux support
     with pydivert.WinDivert(f'{s1} or {d1}') as w:
         for packet in w:
-            print(f'Packet: {packet}')
-            with open('packet.bin', 'wb') as f:
-                f.write(packet.payload)
-            break
+            yield {
+                'data': packet.payload,
+                'incoming': packet.is_inbound,
+            }
+            # print(f'Packet: {packet}')
+            # with open('packet.bin', 'wb') as f:
+            #     f.write(packet.payload)
+            # break
 
 
 def n_separated_file(name):
@@ -36,8 +57,8 @@ def n_separated_file(name):
             line = f.readline()
 
 
-def from_file():
-    for packet in n_separated_file('./shark_cap/cap_04.json'):
+def from_file(args):
+    for packet in n_separated_file(args.packets_file):
         udp = packet["_source"]["layers"]['udp']
         ip = packet["_source"]["layers"]['ip']
         if 'data' not in packet["_source"]["layers"]:
@@ -48,6 +69,7 @@ def from_file():
             'data': data,
             'incoming': ip['ip.dst'].startswith('192.168.88.')
         }
+
 
 class App(tk.Tk):
     def __init__(self, loop):
@@ -90,14 +112,22 @@ class App(tk.Tk):
         self.loop.stop()
         super().destroy()
 
+
 def main():
-    p_source = from_file()
+    args = parse_args()
+    if args.packets_file:
+        p_source = from_file(args)
+    else:
+        p_source = capture()
+
     for i in range(0):
         next(p_source)
     t = NetworkTransport(p_source)
     loop = asyncio.get_event_loop()
     # app = App(loop)
     loop.run_until_complete(t.run(limit=None))
+
+
 
 if __name__ == '__main__':
     main()

@@ -6,14 +6,15 @@ import logging
 import struct
 from collections import defaultdict
 
-from eft_cap.msg_level import MsgDecoder
+from eft_cap.msg_level import MsgDecoder, clear_global
 from eft_cap import bprint, split, split_8, split_16
 import pickle
 
 
 Z_HEARTBEAT = 0x4
 Z_INIT = 0x1
-Z_SKIP = []
+MB_PLAYER_EXIT = 0x3
+Z_SKIP = [MB_PLAYER_EXIT]
 
 M_MSG_DELIMITER = 255
 M_MSG_COMBINED = 254
@@ -65,7 +66,7 @@ class NetworkTransport:
         for packet in self.src:
             self.packet_num += 1
             if self.packet_num % 500 == 0:
-                print(f'Packet: {self.packet_num}')
+                self.log.info(f'Packet: {self.packet_num}')
             if limit and self.packet_num >= limit:
                 break
             # noinspection PyBroadException
@@ -87,7 +88,7 @@ class NetworkTransport:
         self.curr_packet = packet
         stream = packet['data']
         if len(stream) < 3:
-            print(f'Skip packet. Length < 3')
+            self.log.warning(f'Skip packet. Length < 3')
             return
         (conn, ) = struct.unpack('>H', stream[:2])
         if conn == 0:
@@ -111,8 +112,8 @@ class NetworkTransport:
             # print(f'Parse: {b_cps}')
             (connection_id, packet_id, session_id) = struct.unpack('>HHH', b_cps)
             if session_id not in self.session_ok:
-                print(f'Skip packet, no session: {session_id} vs {self.session_ok}')
-                print(self.curr_packet)
+                self.log.info(f'Skip packet, no session: {session_id} vs {self.session_ok}')
+                self.log.info(self.curr_packet)
                 return
             ctx.update({
                 'connection_id': connection_id,
@@ -156,7 +157,7 @@ class NetworkTransport:
             # channel_id + msg_len
             channel_id = ctx['channel_id']
             msg_len = ctx['msg_len']
-            print(ctx)
+            self.log.debug(f'CTX: {ctx}')
             assert msg_len <= len(stream), f'{msg_len} vs {len(stream)}'
             # print(f'FF message: len={msg_len} stream len={len(stream)}')
             stream, after = split(stream, msg_len)
@@ -291,5 +292,6 @@ class NetworkTransport:
 
     def new_session(self):
         """Called when new game has started"""
-        print('New session')
+        self.log.warning('New session')
         self.fragmented = defaultdict(dict)
+        clear_global()
