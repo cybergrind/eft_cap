@@ -14,7 +14,7 @@ from functools import wraps
 from pprint import pprint
 from typing import TYPE_CHECKING
 
-from eft_cap import ParsingError, bprint, split_16le, split
+from eft_cap import ParsingError, bprint, split, split_16le
 
 if TYPE_CHECKING:
     from eft_cap.network_base import NetworkTransport
@@ -241,7 +241,6 @@ class BitStream:
         bprint(self.rest)
         self.bit_offset = bit
 
-
     def align(self):
         off = self.bit_offset % 8
         # print(f'Align: -> {off} vs {self.bit_offset}')
@@ -364,7 +363,7 @@ class BitStream:
             char = self.read_bytes(2)
             # print(f'Append: {char} LEN: {num}')
             out.extend(char)
-        return bytes(out).decode('utf-16-be')
+        return bytes(out).decode("utf-16-be")
 
     def reset(self):
         self.bit_offset = 0
@@ -423,6 +422,10 @@ class Map(ParsingMethods):
         unk9 = self.data.read_u8()
         print(f"Map: {self.bound_min} to {self.bound_max}")
 
+    @property
+    def bb(self):
+        return self.bound_min, self.bound_max
+
 
 class Player(ParsingMethods):
     def __init__(self, msg, me=False):
@@ -476,7 +479,7 @@ class Player(ParsingMethods):
         return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}[{self.cid}]'
 
     def print(self, msg, *args, **kwargs):
-        if self.nickname.startswith("Гога"):
+        if True or self.nickname.startswith("Гога"):
             print(msg, *args, **kwargs)
 
     def update(self, msg, data):
@@ -506,11 +509,8 @@ class Player(ParsingMethods):
             f"Num is {num} GT: {game_time} Disc: {is_disconnected} IsALIVE: {is_alive} {self} {msg_det} Len: {len(self.data.orig_stream)}"
         )
         self.print(self.data.orig_stream)
-        # if self.msg.transport.curr_packet['num'] >= 977 or (self.msg.ctx['channel_id'] == 9 and is_alive):
-        #     print(self.data.orig_stream)
-        #     exit(1000)
-
         if not is_alive:
+            exit(10)
             # probably not died but not alive yet
             self.print(f"Died: {self} Disconnected: {is_disconnected}")
             self.died = True
@@ -520,7 +520,7 @@ class Player(ParsingMethods):
             # self.data.align()
             # print(f'{hex(self.data.read_bits(16))}:')
             nickname = self.data.read_string(1350)
-            print(f'Nick: {nickname}')
+            print(f"Nick: {nickname}")
             side = self.data.read_u32()
             status = self.data.read_string(1350)
             killer = self.data.read_string(1350)
@@ -556,11 +556,21 @@ class Player(ParsingMethods):
             dy = q_y.read(self.data)
             dz = q_z.read(self.data)
 
-            self.pos["x"] = last_pos["x"] + dx
-            self.pos["y"] = last_pos["y"] + dy
-            self.pos["z"] = last_pos["z"] + dz
-
-            self.print(f"Moved: {last_pos} => {self.pos}")
+            if partial:
+                self.pos["x"] = last_pos["x"] + dx
+                self.pos["y"] = last_pos["y"] + dy
+                self.pos["z"] = last_pos["z"] + dz
+            else:
+                self.pos["x"] = dx
+                self.pos["y"] = dy
+                self.pos["z"] = dz
+            self.print(
+                f"Moved: {last_pos} => {self.pos} {GLOBAL['map'].bb}: PARTIAL: {partial}"
+            )
+            bb_min, bb_max = GLOBAL["map"].bb
+            assert bb_min["x"] <= self.pos["x"] <= bb_max["x"]
+            assert bb_min["y"] <= self.pos["y"] <= bb_max["y"]
+            assert bb_min["z"] <= self.pos["z"] <= bb_max["z"]
 
             Player.exit -= 1
             if Player.exit <= 0:
@@ -675,7 +685,7 @@ class MsgDecoder(ParsingMethods):
             print(self.transport.curr_packet)
             print("Exit 21")
             exit(21)
-        print(f'Update player: {player}')
+        print(f"Update player: {player}")
         player.update(self, up_data)
         # MsgDecoder.exit -= 1
 
