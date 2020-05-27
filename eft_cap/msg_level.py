@@ -154,6 +154,44 @@ def stream_from_le(stream, step=4):
         ]
 
 
+class ByteStream:
+    log = logging.getLogger("ByteStream")
+
+    def __init__(self, stream):
+        self.byte_offset = 0
+        self.orig_stream = stream
+
+    def read_bytes(self, num):
+        out = self.orig_stream[self.byte_offset : self.byte_offset + num]
+
+        if len(out) != num:
+            print(
+                f"OS: {self.orig_stream} OFST: {self.byte_offset} NUM: {num} L: {len(self.orig_stream)}"
+            )
+            exit(26)
+        self.byte_offset += num
+        assert len(out) == num
+        return out
+
+    def read_u8(self):
+        return self.read_bytes(1)
+
+    @packed("<H")
+    def read_u16(self):
+        return self.read_bytes(2)
+
+    @packed("<I")
+    def read_u32(self):
+        return self.read_bytes(4)
+
+    @packed("<Q")
+    def read_u64(self):
+        return self.read_bytes(8)
+
+    @packed("<f")
+    def read_f32(self):
+        return self.read_bytes(4)
+
 
 
 class Stream:
