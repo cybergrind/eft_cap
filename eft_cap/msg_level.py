@@ -139,6 +139,23 @@ def packed(fmt, single=True):
     return _wrapped
 
 
+def stream_from_le(stream, step=4):
+    l = len(stream)
+    loops = l // step + 0 if l % step == 0 else 1
+    for i in range(loops):
+        part = stream[i * step : i * step + step]
+        part_len = len(part)
+        if len(part) == 0:
+            return
+        if part_len < step:
+            part = b"\x00" * (step - part_len) + part
+        yield from [
+            b for b in struct.pack(">I", struct.unpack("<I", part)[0])[:part_len]
+        ]
+
+
+
+
 class Stream:
     def __init__(self, stream):
         self.bit_offset = 0
