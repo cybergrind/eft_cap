@@ -7,7 +7,7 @@ import struct
 from collections import defaultdict
 
 from eft_cap.msg_level import MsgDecoder
-from eft_cap import bprint
+from eft_cap import bprint, split, split_8, split_16
 import pickle
 
 
@@ -19,20 +19,6 @@ M_MSG_DELIMITER = 255
 M_MSG_COMBINED = 254
 CHAN_MAX = 207
 FRAGMENTED = [0, 1, 2]
-
-
-def split(data, num_bytes):
-    return data[:num_bytes], data[num_bytes:]
-
-
-def split_8(data):
-    byte, ret = split(data, 1)
-    return byte[0], ret
-
-
-def split_16(data):
-    two_bytes, ret = split(data, 2)
-    return struct.unpack('>H', two_bytes)[0], ret
 
 
 class Acks:

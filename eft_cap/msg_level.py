@@ -11,7 +11,7 @@ from pprint import pprint
 import time
 from typing import TYPE_CHECKING
 
-from eft_cap import bprint, ParsingError
+from eft_cap import bprint, ParsingError, split_16le
 if TYPE_CHECKING:
     from eft_cap.network_base import NetworkTransport
 
