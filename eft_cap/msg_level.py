@@ -63,7 +63,7 @@ def bin_dump(b_str):
 
 def bits_required(min_value, max_value):
     assert max_value > min_value
-    return math.ceil(math.log2(max_value - min_value))
+    return math.floor(math.log2(max_value - min_value)) + 1
 
 
 def dist(a, b):
@@ -247,41 +247,6 @@ class BitStream:
         self.bit_offset += bits
         # print(f'Eval: 0b{bs}')
         return eval(f"0b{bs}")
-
-        assert bits < 33
-        new_offset = self.bit_offset + bits
-        tmp_bits = self.stream[self.bit_offset : self.bit_offset + bits]
-        self.bit_offset += bits
-        if bits == 1:
-            # print(f'Read 1 bit => {tmp_bits}')
-            return tmp_bits[0]
-        elif bits < 9:
-            target = 8
-            fmt = ">B"
-        elif bits < 17:
-            target = 16
-            fmt = ">H"
-        else:
-            target = 32
-            fmt = ">I"
-        need_append = target - bits
-        left_append = 8 - bits % 8 if bits % 8 != 0 else 0
-        right_append = need_append - left_append
-        left = array("B", [0 for i in range(left_append)])
-        right = array("B", [0 for i in range(right_append)])
-        if len(tmp_bits) < 8:
-            int_bits = left + tmp_bits + right
-        else:
-            # left_bits + left_append + right_bits
-            move_to_right = bits % 8
-            left_bits = tmp_bits[:-move_to_right]
-            right_bits = tmp_bits[-move_to_right:]
-            int_bits = left_bits + left + right_bits + right
-        tmp_bytes = bits_to_bytes(int_bits)
-        ret = struct.unpack(fmt, tmp_bytes)[0]
-        # print(f'Tmp Bits: {bits} => {tmp_bits} => {int_bits} => {tmp_bytes} => {ret}')
-
-        return ret
 
     def read_limited_bits(self, min_value=0, max_value=1):
         required = bits_required(min_value, max_value)
@@ -616,6 +581,7 @@ class Player(ParsingMethods):
                     self.log.debug(f'BB IS: {GLOBAL["map"].bb}')
                     self.data.reset()
                     self.log.debug(f'{bytes(self.data.rest)}')
+                    print('Exit 111')
                     exit(111)
                 assert bb_min["x"] <= self.pos["x"] <= bb_max["x"]
                 assert bb_min["y"] <= self.pos["y"] <= bb_max["y"]
