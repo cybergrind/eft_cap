@@ -190,7 +190,7 @@ class ByteStream:
         return out
 
     def read_u8(self):
-        return self.read_bytes(1)
+        return self.read_bytes(1)[0]
 
     @packed("<H")
     def read_u16(self):
@@ -241,10 +241,13 @@ class BitStream:
         bprint(self.rest)
         self.bit_offset = bit
 
+
     def align(self):
         off = self.bit_offset % 8
+        # print(f'Align: -> {off} vs {self.bit_offset}')
         if off:
-            self.read_bits(off)
+            self.read_bits(8 - off)
+        assert self.bit_offset % 8 == 0
 
     def read_bits(self, bits):
         bs = self.stream[self.bit_offset : self.bit_offset + bits]
@@ -358,8 +361,10 @@ class BitStream:
         self.align()
         num = self.read_u32()
         for i in range(num):
-            out.append(self.read_bytes(2))
-        return bytes(out).decode("utf16")
+            char = self.read_bytes(2)
+            # print(f'Append: {char} LEN: {num}')
+            out.extend(char)
+        return bytes(out).decode('utf-16-be')
 
     def reset(self):
         self.bit_offset = 0
@@ -508,32 +513,21 @@ class Player(ParsingMethods):
         if not is_alive:
             # probably not died but not alive yet
             self.print(f"Died: {self} Disconnected: {is_disconnected}")
-            if len(self.data.orig_stream) < 610:
-                return
             self.died = True
 
-            try:
-                inv_hash = self.data.read_u32()
-                time = self.data.read_u64()
-                nickname = self.data.read_string(1350)
-                side = self.data.read_u32()
-                status = self.data.read_string(1350)
-                killer = self.data.read_string(1350)
-                lvl = self.data.read_u32()
-                weapon = self.data.read_string()
-                self.print(f"{killer} killed {nickname} with {weapon}.  Msg in: {self}")
-                self.print(self.data.rest)
-                self.print(self.data.orig_stream)
-            finally:
-                pass
-            print(self.data.orig_stream)
-            print("exit 1000")
-            exit(1000)
-            # if self.msg.transport.curr_packet['num'] >= 977:
-            #     exit(1000)
+            inv_hash = self.data.read_u32()
+            time = self.data.read_u64()
+            # self.data.align()
+            # print(f'{hex(self.data.read_bits(16))}:')
+            nickname = self.data.read_string(1350)
+            print(f'Nick: {nickname}')
+            side = self.data.read_u32()
+            status = self.data.read_string(1350)
+            killer = self.data.read_string(1350)
+            lvl = self.data.read_u32()
+            weapon = self.data.read_string()
+            self.print(f"{killer} killed {nickname} with {weapon}.  Msg in: {self}")
 
-            # exit(1000)
-            pass
         else:
             self.update_position()
             self.update_rotation()
@@ -541,6 +535,7 @@ class Player(ParsingMethods):
     exit = math.inf
 
     def update_position(self):
+        assert not self.died
         last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
         self.print(f"Update {self} Read: {read} ME: {self.me}")
@@ -669,8 +664,10 @@ class MsgDecoder(ParsingMethods):
 
         # get by `channel_id` or `channel_id - 1`
         # player = PLAYERS.get(self.channel_id, PLAYERS.get(self.channel_id - 1, None))  # type: Player
+
         player = PLAYERS.get(self.channel_id, None)  # type: Player
         if not player:
+            # print(f'NO PLAYER: {self.channel_id} : {list(PLAYERS.keys())}')
             if MsgDecoder.skip_unk_player > 0:
                 MsgDecoder.skip_unk_player -= 1
                 return
@@ -678,7 +675,7 @@ class MsgDecoder(ParsingMethods):
             print(self.transport.curr_packet)
             print("Exit 21")
             exit(21)
-
+        print(f'Update player: {player}')
         player.update(self, up_data)
         # MsgDecoder.exit -= 1
 
