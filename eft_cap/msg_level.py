@@ -52,6 +52,14 @@ def bits_required(min_value, max_value):
     return math.ceil(math.log2(max_value - min_value))
 
 
+def dist(a, b):
+    return math.sqrt(
+        (a['x'] - b['x']) ** 2 +
+        (a['y'] - b['y']) ** 2 +
+        (a['z'] - b['z']) ** 2
+    )
+
+
 Q_LOW = 0.001953125
 Q_HIGH = 0.0009765625
 
@@ -485,6 +493,18 @@ class Player(ParsingMethods):
     def __str__(self):
         return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}[{self.cid}]'
 
+    @property
+    def rnd_pos(self):
+        return {
+            'x': round(self.pos['x'], 2),
+            'y': round(self.pos['y'], 2),
+            'z': round(self.pos['x'], 2),
+        }
+
+    def dist(self):
+        return round(dist(self.pos, GLOBAL['me'].pos), 4)
+
+
     def print(self, msg, *args, **kwargs):
         if True or self.nickname.startswith("Гога"):
             self.log.info(msg, *args, **kwargs)
@@ -514,11 +534,12 @@ class Player(ParsingMethods):
             f'Num is {num} GT: {game_time} Disc: {is_disconnected} IsALIVE: {is_alive}'
             f' {self} {msg_det} Len: {len(self.data.orig_stream)}'
         )
-        self.print(self.data.orig_stream)
+        # self.log.debug(self.data.orig_stream)
         if not is_alive:
             # probably not died but not alive yet
             self.log.info(f"Died: {self} Disconnected: {is_disconnected}")
             self.died = True
+            self.is_alive = False
 
             inv_hash = self.data.read_u32()
             time = self.data.read_u64()
@@ -541,7 +562,7 @@ class Player(ParsingMethods):
         assert not self.died
         last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
-        self.print(f"Update {self} Read: {read} ME: {self.me}")
+        self.log.debug(f"Update {self} Read: {read} ME: {self.me}")
         if read:
             partial = self.data.read_bits(1) == 1
             if partial:
@@ -567,7 +588,7 @@ class Player(ParsingMethods):
                 self.pos["x"] = dx
                 self.pos["y"] = dy
                 self.pos["z"] = dz
-            self.print(f"Moved: {last_pos} => {self.pos} {GLOBAL['map'].bb}: PARTIAL: {partial}")
+            self.log.debug(f"Moved: {last_pos} => {self.pos} {GLOBAL['map'].bb}: PARTIAL: {partial}")
             bb_min, bb_max = GLOBAL["map"].bb
             assert bb_min["x"] <= self.pos["x"] <= bb_max["x"]
             assert bb_min["y"] <= self.pos["y"] <= bb_max["y"]

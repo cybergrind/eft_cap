@@ -63,7 +63,7 @@ class NetworkTransport:
     async def run(self, limit=None):
         # packet -> {'data', 'incoming'}
         self.packet_num = -1
-        for packet in self.src:
+        async for packet in self.src:
             self.packet_num += 1
             if self.packet_num % 500 == 0:
                 self.log.info(f'Packet: {self.packet_num}')
