@@ -459,6 +459,10 @@ class Player(ParsingMethods):
     def dist(self):
         return round(dist(self.pos, GLOBAL['me'].pos), 4)
 
+    def vdist(self):
+        me = GLOBAL['me']
+        return round(self.pos['y'] - me.pos['y'], 3)
+
     def print(self, msg, *args, **kwargs):
         if True or self.nickname.startswith("Гога"):
             self.log.info(msg, *args, **kwargs)
