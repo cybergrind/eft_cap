@@ -41,6 +41,20 @@ def bin_print(b_str):
         print(bin_str, end="\n" if idx % 4 == 3 else " ")
 
 
+def to_bits(byte):
+    # print(f'Convert: {hex(byte)}')
+    assert byte < 256
+    bits = bin(byte)[2:]
+    out = []
+    for i in range(8 - len(bits)):
+        out.append(0)
+    for bit in bits:
+        out.append(int(bit))
+    assert len(out) == 8
+    # print(f'Out => {out}')
+    return out
+
+
 def bin_dump(b_str):
     bitstring = itertools.chain.from_iterable([to_bits(one_byte) for one_byte in b_str])
     with open("bin_dump.bin", "wb") as f:
@@ -53,11 +67,7 @@ def bits_required(min_value, max_value):
 
 
 def dist(a, b):
-    return math.sqrt(
-        (a['x'] - b['x']) ** 2 +
-        (a['y'] - b['y']) ** 2 +
-        (a['z'] - b['z']) ** 2
-    )
+    return math.sqrt((a['x'] - b['x']) ** 2 + (a['y'] - b['y']) ** 2 + (a['z'] - b['z']) ** 2)
 
 
 Q_LOW = 0.001953125
@@ -82,20 +92,6 @@ class FloatQuantizer:
 
 def decode_xyz(stream):
     pass
-
-
-def to_bits(byte):
-    # print(f'Convert: {hex(byte)}')
-    assert byte < 256
-    bits = bin(byte)[2:]
-    out = []
-    for i in range(8 - len(bits)):
-        out.append(0)
-    for bit in bits:
-        out.append(int(bit))
-    assert len(out) == 8
-    # print(f'Out => {out}')
-    return out
 
 
 def to_byte(bits):
@@ -228,17 +224,8 @@ class BitStream:
     @property
     def rest(self):
         # assert len(self.stream[self.bit_offset:]) % 8 == 0, f'Off: {self.bit_offset}'
-        bytes_list = []
-        i = self.bit_offset
-        while i < len(self.stream):
-            idx = i
-            byte_bits = self.stream[idx : idx + 8]
-            if len(byte_bits) == 8:
-                bytes_list.append(to_byte(byte_bits))
-            else:
-                self.log.warning(f"Cannot unpack: {byte_bits} into byte. Skipping")
-            i += 8
-        return bytes(bytes_list)
+        while self.bit_offset <= len(self.stream) - 8:
+            yield self.read_bits(8)
 
     def print_rest(self):
         bit = self.bit_offset
@@ -303,6 +290,10 @@ class BitStream:
         ret = read + min_value
         # print(f'Required bits: {required} {read} {ret}')
         return ret
+
+    def read_limited_float(self, min_value=0.0, max_value=1.0, resolution=0.1):
+        q = FloatQuantizer(min_value, max_value, resolution)
+        return q.read(self)
 
     def read_bytes(self, num_bytes):
 
@@ -444,7 +435,6 @@ class Player(ParsingMethods):
         if me:
             GLOBAL['me'] = self
 
-        self.died = False
         self.msg = msg
         self.data = msg.data
 
@@ -504,14 +494,13 @@ class Player(ParsingMethods):
     def dist(self):
         return round(dist(self.pos, GLOBAL['me'].pos), 4)
 
-
     def print(self, msg, *args, **kwargs):
         if True or self.nickname.startswith("Гога"):
             self.log.info(msg, *args, **kwargs)
 
     def update(self, msg, data):
         self.msg = msg  # type: MsgDecoder
-        self.data = data  # type: Stream
+        self.data = data  # type: BitStream
         if self.me:
             self.log.debug(f"Skip myself {self}")
             return
@@ -538,7 +527,6 @@ class Player(ParsingMethods):
         if not is_alive:
             # probably not died but not alive yet
             self.log.info(f"Died: {self} Disconnected: {is_disconnected}")
-            self.died = True
             self.is_alive = False
 
             inv_hash = self.data.read_u32()
@@ -556,10 +544,32 @@ class Player(ParsingMethods):
             self.update_position()
             self.update_rotation()
 
+    def update_me(self, msg: MsgDecoder, data: BitStream):
+        self.msg = msg
+        self.data = data
+        num = self.data.read_limited_bits(0, 127)
+        self.log.debug(f'NUM: {num}')
+        for i in range(num):
+            if self.data.read_bits(1):
+                rtt = self.data.read_u16()
+            else:
+                rtt = 0
+            dt = self.data.read_limited_float(0.0, 1.0, 0.0009765625)
+            frame = self.data.read_limited_bits(0, 2097151)
+            if self.data.read_bits(1):
+                frame2 = self.data.read_limited_bits(0, 2097151)
+            else:
+                frame2 = self.data.read_limited_bits(0, 15)
+            # self.data.read_bits(20)
+            self.log.debug(f'DT: {dt}/ {rtt} /F1: {frame} {frame2}.  {self.msg}')
+            # self.data.bit_offset -= 3
+            self.update_position()
+            self.update_rotation()
+
     exit = math.inf
 
-    def update_position(self):
-        assert not self.died
+    def update_position(self, check=True):
+        assert self.is_alive
         last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
         self.log.debug(f"Update {self} Read: {read} ME: {self.me}")
@@ -579,27 +589,45 @@ class Player(ParsingMethods):
             dx = q_x.read(self.data)
             dy = q_y.read(self.data)
             dz = q_z.read(self.data)
+            self.log.debug(f'DX: {dx} DY: {dy} DZ: {dz}')
+
+            # if self.me and not partial:
+            #     exit(102)
+            # else:
+            #     return
 
             if partial:
                 self.pos["x"] = last_pos["x"] + dx
                 self.pos["y"] = last_pos["y"] + dy
                 self.pos["z"] = last_pos["z"] + dz
+                # self.quant_position()
+                pass
             else:
                 self.pos["x"] = dx
                 self.pos["y"] = dy
                 self.pos["z"] = dz
-            self.log.debug(f"Moved: {last_pos} => {self.pos} {GLOBAL['map'].bb}: PARTIAL: {partial}")
-            bb_min, bb_max = GLOBAL["map"].bb
-            assert bb_min["x"] <= self.pos["x"] <= bb_max["x"]
-            assert bb_min["y"] <= self.pos["y"] <= bb_max["y"]
-            assert bb_min["z"] <= self.pos["z"] <= bb_max["z"]
 
-            Player.exit -= 1
-            if Player.exit <= 0:
-                print("exit 0")
-                exit(0)
+            self.log.debug(
+                f"Moved: {last_pos} => {self.pos} {GLOBAL['map'].bb}: PARTIAL: {partial}"
+            )
+            if check:
+                bb_min, bb_max = GLOBAL["map"].bb
+                if not (bb_min["y"] <= self.pos["y"] <= bb_max["y"]):
+                    self.log.debug(f'BB IS: {GLOBAL["map"].bb}')
+                    self.data.reset()
+                    self.log.debug(f'{bytes(self.data.rest)}')
+                    exit(111)
+                assert bb_min["x"] <= self.pos["x"] <= bb_max["x"]
+                assert bb_min["y"] <= self.pos["y"] <= bb_max["y"]
+                assert bb_min["z"] <= self.pos["z"] <= bb_max["z"]
         else:
             print(f"Rest is: {self.data.bit_offset} Size: {len(self.data.stream)}")
+
+    def quant_position(self):
+        bb_min, bb_max = GLOBAL["map"].bb
+        self.pos['x'] = max(bb_min['x'], min(bb_max['x'], self.pos['x']))
+        self.pos['y'] = max(bb_min['y'], min(bb_max['y'], self.pos['y']))
+        self.pos['z'] = max(bb_min['z'], min(bb_max['z'], self.pos['z']))
 
     def update_rotation(self):
         if self.data.read_u8():
@@ -671,6 +699,7 @@ class MsgDecoder(ParsingMethods):
             up_data = BitStream(up_bin)
             if not self.ctx["incoming"]:
                 self.update_outbound(up_data)
+
             elif up_data.read_bits(1) == 1:
                 self.update_player(up_data)
             else:
@@ -686,14 +715,6 @@ class MsgDecoder(ParsingMethods):
     skip_unk_player = math.inf
 
     def update_player(self, up_data: BitStream):
-
-        # NOT CID: 3924 => 3
-        # 4274 => 4
-        # 9975 => 4
-        # 11481 {559} => 4
-        # 19204 {316} => 4
-        # 24137 {203} => 4
-
         # get by `channel_id` or `channel_id - 1`
         # player = PLAYERS.get(self.channel_id, PLAYERS.get(self.channel_id - 1, None))  # type: Player
 
@@ -709,14 +730,12 @@ class MsgDecoder(ParsingMethods):
             exit(21)
         self.log.debug(f"Update player: {player}")
         player.update(self, up_data)
-        # MsgDecoder.exit -= 1
 
     def update_outbound(self, up_data):
-        num = up_data.read_limited_bits(0, 127)
-        # print(f'Outbound num = {num}')
-        return
-        for i in range(num):
-            rtt = up_data.read_u16() if up_data.read_bits(1) else 0
+        # if self.curr_packet['num'] == 1433:
+        #     self.log.debug(f'{bytes(up_data.rest)}')
+        #     exit(112)
+        GLOBAL['me'].update_me(self, up_data)
 
     def update_world(self, up_data):
         pass

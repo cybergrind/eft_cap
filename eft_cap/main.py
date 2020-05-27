@@ -15,7 +15,7 @@ from eft_cap.network_base import NetworkTransport
 from eft_cap.msg_level import PLAYERS
 
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 log = logging.getLogger('eft_cap.main')
 
 
@@ -111,7 +111,6 @@ class App(tk.Tk):
 
         num_rows = len(self.rows)
         need_rows = len(rows) + 1
-        self.log.debug(f'Num: {num_rows} Need: {need_rows}')
         if num_rows < need_rows:
             self.add_rows(need_rows, num_cols)
             print(f'Add: {rows}')
@@ -123,7 +122,6 @@ class App(tk.Tk):
         self.log.debug(f'NUM ROWS: {len(self.rows)} / {len(rows)}')
         for row_1, row in enumerate([headers, *rows]):
             for col, text in enumerate(row):
-                self.log.debug(f'Row idx: {row_1}')
                 cell = self.rows[row_1][col]
                 cell.txt.set(f' {text} ')
 
@@ -138,7 +136,6 @@ class App(tk.Tk):
 
     async def update_loop(self):
         while True:
-            self.log.debug('Update loop')
             players = []
             dead_players = []
 
