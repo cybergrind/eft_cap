@@ -1,20 +1,23 @@
 from __future__ import annotations
+
 import copy
+import itertools
+import json
 import logging
 import math
-from array import array
-import itertools
 import struct
-import zlib
-import json
-from pprint import pprint
 import time
+import traceback
+import zlib
+from array import array
+from functools import wraps
+from pprint import pprint
 from typing import TYPE_CHECKING
 
-from eft_cap import bprint, ParsingError, split_16le
+from eft_cap import ParsingError, bprint, split_16le, split
+
 if TYPE_CHECKING:
     from eft_cap.network_base import NetworkTransport
-
 
 
 SERVER_INIT = 147
@@ -34,23 +37,24 @@ def bin_print(b_str):
     for idx in range(len(b_str)):
         bin_str = bin(b_str[idx])[2:]
         if len(bin_str) < 8:
-            bin_str = ''.join(['0' for i in range(8 - len(bin_str))]) + bin_str
-        print(bin_str, end='\n' if idx % 4 == 3 else ' ')
+            bin_str = "".join(["0" for i in range(8 - len(bin_str))]) + bin_str
+        print(bin_str, end="\n" if idx % 4 == 3 else " ")
+
 
 def bin_dump(b_str):
     bitstring = itertools.chain.from_iterable([to_bits(one_byte) for one_byte in b_str])
-    with open('bin_dump.bin', 'wb') as f:
+    with open("bin_dump.bin", "wb") as f:
         f.write(bytes(bitstring))
 
 
 def bits_required(min_value, max_value):
     assert max_value > min_value
-    return math.ceil(
-        math.log2(max_value - min_value)
-    )
+    return math.ceil(math.log2(max_value - min_value))
+
 
 Q_LOW = 0.001953125
 Q_HIGH = 0.0009765625
+
 
 class FloatQuantizer:
     def __init__(self, min_value, max_value, resolution):
@@ -73,6 +77,7 @@ def decode_xyz(stream):
 
 
 def to_bits(byte):
+    # print(f'Convert: {hex(byte)}')
     assert byte < 256
     bits = bin(byte)[2:]
     out = []
@@ -81,6 +86,7 @@ def to_bits(byte):
     for bit in bits:
         out.append(int(bit))
     assert len(out) == 8
+    # print(f'Out => {out}')
     return out
 
 
@@ -98,19 +104,23 @@ def bits_to_bytes(bits):
     assert len(bits) % 8 == 0, len(bits)
     out = []
     for i in range(len(bits) // 8):
-        out.append(to_byte(bits[i*8:i*8+8]))
+        out.append(to_byte(bits[i * 8 : i * 8 + 8]))
     return bytes(out)
 
 
 def euler_to_quaternion(roll, pitch, yaw):
-    qx = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(roll / 2) * math.sin(
-        pitch / 2) * math.sin(yaw / 2)
-    qy = math.cos(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.cos(
-        pitch / 2) * math.sin(yaw / 2)
-    qz = math.cos(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2) - math.sin(roll / 2) * math.sin(
-        pitch / 2) * math.cos(yaw / 2)
-    qw = math.cos(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.sin(
-        pitch / 2) * math.sin(yaw / 2)
+    qx = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(
+        roll / 2
+    ) * math.sin(pitch / 2) * math.sin(yaw / 2)
+    qy = math.cos(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2) + math.sin(
+        roll / 2
+    ) * math.cos(pitch / 2) * math.sin(yaw / 2)
+    qz = math.cos(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2) - math.sin(
+        roll / 2
+    ) * math.sin(pitch / 2) * math.cos(yaw / 2)
+    qw = math.cos(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) + math.sin(
+        roll / 2
+    ) * math.sin(pitch / 2) * math.sin(yaw / 2)
 
     return [qx, qy, qz, qw]
 
@@ -126,16 +136,22 @@ def quaternion_to_euler(x, y, z, w):
     t3 = +2.0 * (w * z + x * y)
     t4 = +1.0 - 2.0 * (y * y + z * z)
     yaw = math.degrees(math.atan2(t3, t4))
-    return {'x': yaw, 'y': pitch, 'z': roll}
+    return {"x": yaw, "y": pitch, "z": roll}
 
 
 def packed(fmt, single=True):
     def _wrapped(func):
+        @wraps(func)
         def _inner(*args, **kwargs):
             bin_resp = func(*args, **kwargs)
-            unpacked = struct.unpack(fmt, bin_resp)
+            try:
+                unpacked = struct.unpack(fmt, bin_resp)
+            except Exception:
+                exit(27)
             return unpacked[0] if single else unpacked
+
         return _inner
+
     return _wrapped
 
 
@@ -193,13 +209,17 @@ class ByteStream:
         return self.read_bytes(4)
 
 
+class BitStream:
+    log = logging.getLogger("BitStream")
 
-class Stream:
     def __init__(self, stream):
         self.bit_offset = 0
         self.orig_stream = stream
-        bitstring = itertools.chain.from_iterable([to_bits(one_byte) for one_byte in stream])
-        self.stream = array('B', bitstring)
+        be_stream = stream_from_le(stream)
+        bitstring = itertools.chain.from_iterable(
+            [to_bits(one_byte) for one_byte in be_stream]
+        )
+        self.stream = array("B", bitstring)
 
     @property
     def rest(self):
@@ -208,11 +228,11 @@ class Stream:
         i = self.bit_offset
         while i < len(self.stream):
             idx = i
-            byte_bits = self.stream[idx:idx + 8]
+            byte_bits = self.stream[idx : idx + 8]
             if len(byte_bits) == 8:
                 bytes_list.append(to_byte(byte_bits))
             else:
-                print(f'Cannot unpack: {byte_bits} into byte. Skipping')
+                print(f"Cannot unpack: {byte_bits} into byte. Skipping")
             i += 8
         return bytes(bytes_list)
 
@@ -227,27 +247,35 @@ class Stream:
             self.read_bits(off)
 
     def read_bits(self, bits):
+        bs = self.stream[self.bit_offset : self.bit_offset + bits]
+        bs = "".join([str(i) for i in bs])
+        if not bs:
+            return 0
+        self.bit_offset += bits
+        # print(f'Eval: 0b{bs}')
+        return eval(f"0b{bs}")
+
         assert bits < 33
         new_offset = self.bit_offset + bits
-        tmp_bits = self.stream[self.bit_offset:self.bit_offset+bits]
+        tmp_bits = self.stream[self.bit_offset : self.bit_offset + bits]
         self.bit_offset += bits
         if bits == 1:
             # print(f'Read 1 bit => {tmp_bits}')
             return tmp_bits[0]
         elif bits < 9:
             target = 8
-            fmt = '<B'
+            fmt = ">B"
         elif bits < 17:
             target = 16
-            fmt = '<H'
+            fmt = ">H"
         else:
             target = 32
-            fmt = '<I'
+            fmt = ">I"
         need_append = target - bits
         left_append = 8 - bits % 8 if bits % 8 != 0 else 0
         right_append = need_append - left_append
-        left = array('B', [0 for i in range(left_append)])
-        right = array('B', [0 for i in range(right_append)])
+        left = array("B", [0 for i in range(left_append)])
+        right = array("B", [0 for i in range(right_append)])
         if len(tmp_bits) < 8:
             int_bits = left + tmp_bits + right
         else:
@@ -272,17 +300,28 @@ class Stream:
 
     def read_bytes(self, num_bytes):
 
+        return bytes([self.read_bits(8) for i in range(num_bytes)])
+
         required = num_bytes * 8
         remains = len(self.stream) - self.bit_offset
         if required > remains:
             self.print_rest()
             # print(f'Read: {num_bytes}')
-            raise ParsingError(f'Need: {required} Remains: {remains} Offset: {self.bit_offset}')
+            print(f"Need: {required} Remains: {remains} Offset: {self.bit_offset}")
+            try:
+                raise Exception
+            except Exception as e:
+                self.log.exception("ee")
+            exit(11)
+            raise ParsingError(
+                f"Need: {required} Remains: {remains} Offset: {self.bit_offset}"
+            )
+
         if self.aligned:
             assert self.bit_offset % 8 == 0
             boff = int(self.bit_offset / 8)
             # print(f'Get bytes: {num_bytes} BOFF: {boff} OFF: {boff + num_bytes}')
-            resp = self.orig_stream[boff:(boff + num_bytes)]
+            resp = self.orig_stream[boff : (boff + num_bytes)]
             self.bit_offset += num_bytes * 8
             return resp
         else:
@@ -291,15 +330,15 @@ class Stream:
     def read_u8(self):
         return self.read_bits(8)
 
-    @packed('<H')
+    @packed(">H")
     def read_u16(self):
         return self.read_bytes(2)
 
-    @packed('<I')
+    @packed(">I")
     def read_u32(self):
         return self.read_bytes(4)
 
-    @packed('<Q')
+    @packed(">Q")
     def read_u64(self):
         return self.read_bytes(8)
 
@@ -307,11 +346,11 @@ class Stream:
     def aligned(self):
         return self.bit_offset % 8 == 0
 
-    @packed('<f')
+    @packed(">f")
     def read_f32(self):
         return self.read_bytes(4)
 
-    def read_string(self, max_size = 0):
+    def read_string(self, max_size=0):
         is_null = self.read_bits(1)
         if is_null:
             return None
@@ -320,14 +359,14 @@ class Stream:
         num = self.read_u32()
         for i in range(num):
             out.append(self.read_bytes(2))
-        return bytes(out).decode('utf16')
+        return bytes(out).decode("utf16")
 
     def reset(self):
         self.bit_offset = 0
 
 
 GLOBAL = {
-    'map': None,
+    "map": None,
 }
 PLAYERS = {}
 
@@ -339,16 +378,18 @@ class ParsingMethods:
 
     def read_rot(self):
         return {
-            'x': self.data.read_f32(),
-            'y': self.data.read_f32(),
-            'z': self.data.read_f32(),
-            'w': self.data.read_f32()
+            "x": self.data.read_f32(),
+            "y": self.data.read_f32(),
+            "z": self.data.read_f32(),
+            "w": self.data.read_f32(),
         }
 
     def read_pos(self):
-        return {'x': self.data.read_f32(),
-                'y': self.data.read_f32(),
-                'z': self.data.read_f32()}
+        return {
+            "x": self.data.read_f32(),
+            "y": self.data.read_f32(),
+            "z": self.data.read_f32(),
+        }
 
 
 class Map(ParsingMethods):
@@ -375,7 +416,7 @@ class Map(ParsingMethods):
         self.bound_max = self.read_pos()
         unk8 = self.data.read_u16()
         unk9 = self.data.read_u8()
-        print(f'Map: {self.bound_min} to {self.bound_max}')
+        print(f"Map: {self.bound_min} to {self.bound_max}")
 
 
 class Player(ParsingMethods):
@@ -406,55 +447,59 @@ class Player(ParsingMethods):
         self.prof = json.loads(zlib.decompress(prof_zip))
         self.full_prof = copy.copy(self.prof)
 
-        self.prof.pop('Encyclopedia')
-        self.prof.pop('BackendCounters')
-        self.prof.pop('Bonuses')
-        self.prof.pop('Skills')
-        self.prof.pop('Quests')
-        self.prof.pop('InsuredItems')
-        self.prof.pop('ConditionCounters')
-        self.prof.pop('Stats')
+        self.prof.pop("Encyclopedia")
+        self.prof.pop("BackendCounters")
+        self.prof.pop("Bonuses")
+        self.prof.pop("Skills")
+        self.prof.pop("Quests")
+        self.prof.pop("InsuredItems")
+        self.prof.pop("ConditionCounters")
+        self.prof.pop("Stats")
         pprint(self.prof)
-        info = self.prof.get('Info')
-        self.nickname = info.get('Nickname')
-        self.lvl = info.get('Level')
-        self.surv_class = self.prof.get('SurvivorClass')
-        self.is_scav = info.get('Side') == 'Savage'
+        info = self.prof.get("Info")
+        self.nickname = info.get("Nickname")
+        self.lvl = info.get("Level")
+        self.surv_class = self.prof.get("SurvivorClass")
+        self.is_scav = info.get("Side") == "Savage"
         self.is_npc = self.is_scav and self.lvl == 1
-        side = info.get('Side')
-        self.side = 'SCAV' if side == 'Savage' else side
+        side = info.get("Side")
+        self.side = "SCAV" if side == "Savage" else side
 
-        print(f'OBS POS: {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}')
+        print(f"OBS POS: {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}")
 
     def __str__(self):
         return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}[{self.cid}]'
 
     def print(self, msg, *args, **kwargs):
-        if self.nickname.startswith('Гога'):
+        if self.nickname.startswith("Гога"):
             print(msg, *args, **kwargs)
 
     def update(self, msg, data):
         self.msg = msg  # type: MsgDecoder
         self.data = data  # type: Stream
         if self.me:
-            print(f'Skip myself {self}')
+            print(f"Skip myself {self}")
             return
-        args = {'min_value': 1, 'max_value': 5}
+        args = {"min_value": 1, "max_value": 5}
         if self.data.read_bits(1) == 0:
-            args = {'min_value': 0, 'max_value': 2097151}
+            args = {"min_value": 0, "max_value": 2097151}
             # args = {'max_value': 1037149}  # < 20 bit
         num = self.data.read_limited_bits(**args)
 
         game_time = self.data.read_f32()
         # print(f'Time: {game_time}')
         is_disconnected = self.data.read_bits(1)
-        self.print(f'OFFST: {self.data.bit_offset}')
+        self.print(f"OFFST: {self.data.bit_offset}")
         is_alive = self.data.read_bits(1)
 
         ctx = self.msg.ctx
         curr_packet = self.msg.transport.curr_packet
-        msg_det = f'PCKT: {curr_packet["num"]}/{curr_packet["len"]} CID: {ctx["channel_id"]}'
-        self.print(f'Num is {num} GT: {game_time} Disc: {is_disconnected} IsALIVE: {is_alive} {self} {msg_det} Len: {len(self.data.orig_stream)}')
+        msg_det = (
+            f'PCKT: {curr_packet["num"]}/{curr_packet["len"]} CID: {ctx["channel_id"]}'
+        )
+        self.print(
+            f"Num is {num} GT: {game_time} Disc: {is_disconnected} IsALIVE: {is_alive} {self} {msg_det} Len: {len(self.data.orig_stream)}"
+        )
         self.print(self.data.orig_stream)
         # if self.msg.transport.curr_packet['num'] >= 977 or (self.msg.ctx['channel_id'] == 9 and is_alive):
         #     print(self.data.orig_stream)
@@ -462,10 +507,10 @@ class Player(ParsingMethods):
 
         if not is_alive:
             # probably not died but not alive yet
-            self.print(f'Died: {self} Disconnected: {is_disconnected}')
+            self.print(f"Died: {self} Disconnected: {is_disconnected}")
             if len(self.data.orig_stream) < 610:
                 return
-            # self.died = True
+            self.died = True
 
             try:
                 inv_hash = self.data.read_u32()
@@ -476,13 +521,13 @@ class Player(ParsingMethods):
                 killer = self.data.read_string(1350)
                 lvl = self.data.read_u32()
                 weapon = self.data.read_string()
-                self.print(f'{killer} killed {nickname} with {weapon}.  Msg in: {self}')
+                self.print(f"{killer} killed {nickname} with {weapon}.  Msg in: {self}")
                 self.print(self.data.rest)
                 self.print(self.data.orig_stream)
             finally:
                 pass
             print(self.data.orig_stream)
-            print('exit 1000')
+            print("exit 1000")
             exit(1000)
             # if self.msg.transport.curr_packet['num'] >= 977:
             #     exit(1000)
@@ -494,10 +539,11 @@ class Player(ParsingMethods):
             self.update_rotation()
 
     exit = math.inf
+
     def update_position(self):
         last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
-        self.print(f'Update {self} Read: {read} ME: {self.me}')
+        self.print(f"Update {self} Read: {read} ME: {self.me}")
         if read:
             partial = self.data.read_bits(1) == 1
             if partial:
@@ -505,84 +551,79 @@ class Player(ParsingMethods):
                 q_y = FloatQuantizer(-1, 1, Q_HIGH)
                 q_z = FloatQuantizer(-1, 1, Q_LOW)
             else:
-                curr_map = GLOBAL['map']  # type: Map
+                curr_map = GLOBAL["map"]  # type: Map
                 _min = curr_map.bound_min
                 _max = curr_map.bound_max
-                q_x = FloatQuantizer(_min['x'], _max['x'], Q_LOW)
-                q_y = FloatQuantizer(_min['y'], _max['y'], Q_HIGH)
-                q_z = FloatQuantizer(_min['z'], _max['z'], Q_LOW)
+                q_x = FloatQuantizer(_min["x"], _max["x"], Q_LOW)
+                q_y = FloatQuantizer(_min["y"], _max["y"], Q_HIGH)
+                q_z = FloatQuantizer(_min["z"], _max["z"], Q_LOW)
             dx = q_x.read(self.data)
             dy = q_y.read(self.data)
             dz = q_z.read(self.data)
 
-            self.pos['x'] = last_pos['x'] + dx
-            self.pos['y'] = last_pos['y'] + dy
-            self.pos['z'] = last_pos['z'] + dz
+            self.pos["x"] = last_pos["x"] + dx
+            self.pos["y"] = last_pos["y"] + dy
+            self.pos["z"] = last_pos["z"] + dz
 
-
-            self.print(f'Moved: {last_pos} => {self.pos}')
+            self.print(f"Moved: {last_pos} => {self.pos}")
 
             Player.exit -= 1
             if Player.exit <= 0:
-                print('exit 0')
+                print("exit 0")
                 exit(0)
         else:
-            print(f'Rest is: {self.data.bit_offset} Size: {len(self.data.stream)}')
+            print(f"Rest is: {self.data.bit_offset} Size: {len(self.data.stream)}")
 
     def update_rotation(self):
         if self.data.read_u8():
             qx = FloatQuantizer(0, 360, 0.015625)
             qy = FloatQuantizer(-90, 90, 0.015625)
             before = copy.copy(self.rot)
-            self.rot['x'] = qx.read(self.data)
-            self.rot['y'] = qy.read(self.data)
+            self.rot["x"] = qx.read(self.data)
+            self.rot["y"] = qy.read(self.data)
             # print(f'Rotated: {before} => {self.rot}')
 
 
 class MsgDecoder(ParsingMethods):
-    log = logging.getLogger('MsgDecoder')
+    log = logging.getLogger("MsgDecoder")
 
     def __init__(self, transport: NetworkTransport, ctx: dict):
         self.transport = transport
+        self.curr_packet = transport.curr_packet
         self.ctx = ctx
-        self.incoming = ctx['incoming']
-        self.channel_id = ctx['channel_id']
+        self.incoming = ctx["incoming"]
+        self.channel_id = ctx["channel_id"]
         self.decoded = False
+
+    def __str__(self):
+        return f'<MSG:{self.op_type} PKT:{self.curr_packet["num"]}/{self.curr_packet["len"]}>'
 
     def parse(self, stream):
         # print('parse in MsgDecoder')
         # bprint(stream)
-        stream = Stream(stream)
         msg = {}
-        self.len = msg['len'] = stream.read_u16()
-        self.op_type = msg['op_type'] = stream.read_u16()
+        self.len, stream = split_16le(stream)
+        self.op_type, stream = split_16le(stream)
+        self.content, stream = split(stream, self.len)
+
         # print(f'LEN: {msg["len"]} OP: {self.op_type}')
         # stream.print_rest()
-        self.content = msg['content'] = stream.read_bytes(msg['len'])
         self.try_decode()
         # print(msg)
         self.transport.add_msg(self.ctx, self)
         # print(f'return offset: {stream.bit_offset} / {len(stream.stream)}')
-        ret = stream.rest
-        if len(ret) > 60:
-            # print(f'after ret: {ret[:60]} ....')
-            pass
-        else:
-            # print(f'After ret: {ret}')
-            pass
-        return ret
+        return stream
 
     exit = 1
 
     def init_server(self):
-        if not self.ctx['incoming']:
+        if not self.ctx["incoming"]:
             return
         curr_map = Map(self)
-        GLOBAL['map'] = curr_map
+        GLOBAL["map"] = curr_map
 
     def decode(self):
-        self.data = Stream(self.content)
-
+        self.data = ByteStream(self.content)
         if self.op_type == SERVER_INIT:
             self.init_server()
         elif self.op_type == PLAYER_SPAWN:
@@ -592,28 +633,31 @@ class MsgDecoder(ParsingMethods):
         elif self.op_type == OBSERVER_UNSPAWN:
             self.pid = self.data.read_u32()
             self.cid = self.data.read_u8()
-            print(f'Exit: {PLAYERS[self.cid]}')
+            print(f"Exit: {PLAYERS[self.cid]}")
             del PLAYERS[self.cid]
             # exit(0)
             # MsgDecoder.exit -= 1
         elif self.op_type == GAME_UPDATE:
+            # print(f'READSIZE: {len(self.content)} / {self.content} / {self}')
+            # bprint(self.content)
             up_bin = self.read_size_and_bytes()
-            up_data = Stream(up_bin)
-            if not self.ctx['incoming']:
+            up_data = BitStream(up_bin)
+            if not self.ctx["incoming"]:
                 self.update_outbound(up_data)
             elif up_data.read_bits(1) == 1:
                 self.update_player(up_data)
             else:
-                if not self.ctx['incoming']:
+                if not self.ctx["incoming"]:
                     print(self.transport.curr_packet)
-                    print('Exit 22')
+                    print("Exit 22")
                     exit(22)
                 self.update_world(up_data)
         if MsgDecoder.exit <= 0:
-            print('Exit 20')
+            print("Exit 20")
             exit(20)
 
     skip_unk_player = math.inf
+
     def update_player(self, up_data):
 
         # NOT CID: 3924 => 3
@@ -630,9 +674,9 @@ class MsgDecoder(ParsingMethods):
             if MsgDecoder.skip_unk_player > 0:
                 MsgDecoder.skip_unk_player -= 1
                 return
-            print(f'Players: {list(PLAYERS.keys())} CID: {self.channel_id}')
+            print(f"Players: {list(PLAYERS.keys())} CID: {self.channel_id}")
             print(self.transport.curr_packet)
-            print('Exit 21')
+            print("Exit 21")
             exit(21)
 
         player.update(self, up_data)
@@ -648,10 +692,9 @@ class MsgDecoder(ParsingMethods):
     def update_world(self, up_data):
         pass
 
-
     def try_decode(self):
         try:
             self.decode()
             self.decoded = True
         except Exception as e:
-            self.log.exception('While decode packet')
+            self.log.exception("While decode packet")

@@ -191,6 +191,7 @@ class NetworkTransport:
                             fragments.append(self.fragmented[frag_id][i])
                         bin_msg = b''.join(fragments)
                         # print('Assemble ')
+                        # print(bin_msg)
                         # bprint(bin_msg)
                         while len(bin_msg) > 2:
                             msg = MsgDecoder(self, ctx)
@@ -198,11 +199,12 @@ class NetworkTransport:
                             # print(f'Processed message in fragmented. Remains: {len(bin_msg)}')
                             yield True, msg
                         # print(f'After parse: {bin_msg}')
-                        if bin_msg != b'':
+                        if bin_msg != b'' and len(bin_msg) > 3:
+                            print(f'BinRest: {bin_msg}')
                             # print(self.curr_packet)
                             print('Exit 15')
                             exit(15)
-                        assert bin_msg == b''
+                        # assert bin_msg == b''
                         # print(f'Msg: {msg.op_type}')
                         yield True, msg
                     else:
@@ -251,7 +253,7 @@ class NetworkTransport:
             msg_id, msg_stream = split_16(msg_stream)
             ordered_id, msg_stream = split_8(msg_stream)
             ctx['msg_id'] = msg_id
-            while len(msg_stream) > 0:
+            while len(msg_stream) > 3:
                 msg = MsgDecoder(self, ctx)
                 # bprint(stream)
                 msg_stream = msg.parse(msg_stream)
