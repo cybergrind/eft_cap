@@ -43,13 +43,11 @@ class App(tk.Tk):
         need_rows = len(rows) + 1
         if num_rows < need_rows:
             self.add_rows(need_rows, num_cols)
-            print(f'Add: {rows}')
         elif num_rows > need_rows:
             self.remove_rows(need_rows)
-            print(f'Remove: {rows}')
         assert len(self.rows) == need_rows
 
-        self.log.debug(f'NUM ROWS: {len(self.rows)} / {len(rows)}')
+        # self.log.debug(f'NUM ROWS: {len(self.rows)} / {len(rows)}')
         for row_1, row in enumerate([headers, *rows]):
             for col, text in enumerate(row):
                 cell = self.rows[row_1][col]
@@ -72,7 +70,7 @@ class App(tk.Tk):
             player: Player
             for player in PLAYERS.values():
                 row = [
-                    f'{player.dist()}', f'{player.vdist()}', str(player), str(player.rnd_pos), str(player.is_alive)
+                    player.dist(), f'{player.vdist()}', str(player), str(player.rnd_pos), str(player.is_alive)
                 ]
                 if player.is_alive:
                     players.append(row)

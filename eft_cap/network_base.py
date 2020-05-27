@@ -2,9 +2,12 @@
 
 """
 import asyncio
+import json
 import logging
 import struct
 from collections import defaultdict
+import pathlib
+import datetime
 
 from eft_cap.msg_level import MsgDecoder, clear_global
 from eft_cap import bprint, split, split_8, split_16
@@ -59,6 +62,13 @@ class NetworkTransport:
         self.acks_in = Acks('inbound')
         self.acks_out = Acks('outbound')
         self.fragmented = defaultdict(dict)
+        self.init_packet_log()
+
+    def init_packet_log(self):
+        path = pathlib.Path(datetime.datetime.now().strftime('packet_logs/%Y%m%d_%H%M.packet.log'))
+        if not path.parent.exists():
+            path.parent.mkdir(exist_ok=True)
+        self.packet_log = path.open('w')
 
     async def run(self, limit=None):
         # packet -> {'data', 'incoming'}
@@ -81,8 +91,24 @@ class NetworkTransport:
                 print('Exit 19')
                 exit(19)
 
+    def bin_to_str(self, bytestring):
+        out = []
+        for b in bytestring:
+            s = hex(b)[2:]
+            if len(s) == 1:
+                s = '0' + s
+            out.append(s)
+        return ':'.join(out)
+
+    def save_packet(self, packet):
+        self.packet_log.write(
+            json.dumps({'incoming': packet['incoming'],
+            'data': self.bin_to_str( packet['data'])})
+        )
+        self.packet_log.write('\n')
 
     def process_packet(self, packet):
+        self.save_packet(packet)
         packet['len'] = len(packet['data'])
         packet['num'] = self.packet_num
         self.curr_packet = packet
@@ -111,7 +137,7 @@ class NetworkTransport:
             b_cps, stream = split(stream, 6)
             # print(f'Parse: {b_cps}')
             (connection_id, packet_id, session_id) = struct.unpack('>HHH', b_cps)
-            if session_id not in self.session_ok:
+            if False and session_id not in self.session_ok:
                 self.log.info(f'Skip packet, no session: {session_id} vs {self.session_ok}')
                 self.log.info(self.curr_packet)
                 return
@@ -136,7 +162,7 @@ class NetworkTransport:
         if len(stream) > 0:
             bprint(stream)
             self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
-            exit(16)
+            # exit(16)
 
     def add_msg(self, ctx, msg=None):
         ctx.setdefault('message', []).append({
@@ -286,7 +312,7 @@ class NetworkTransport:
 
     def extractMessage(self, stream, ctx):
         print('Exit 19')
-        exit(19)
+        # exit(19)
         stream = self.extractMessageHeader(stream, ctx)
         return MsgDecoder(self, ctx).parse(stream)
 
@@ -295,3 +321,6 @@ class NetworkTransport:
         self.log.warning('New session')
         self.fragmented = defaultdict(dict)
         clear_global()
+        self.session_ok = []
+        self.init_packet_log()
+

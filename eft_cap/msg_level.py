@@ -591,7 +591,7 @@ class Player(ParsingMethods):
                 assert bb_min["y"] <= self.pos["y"] <= bb_max["y"]
                 assert bb_min["z"] <= self.pos["z"] <= bb_max["z"]
         else:
-            print(f"Rest is: {self.data.bit_offset} Size: {len(self.data.stream)}")
+            self.log.debug(f"Rest is: {self.data.bit_offset} Size: {len(self.data.stream)}")
 
     def quant_position(self):
         bb_min, bb_max = GLOBAL["map"].bb

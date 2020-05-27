@@ -9,7 +9,7 @@ sys.path.append('.')
 from eft_cap.tk_ui import App
 from eft_cap.network_base import NetworkTransport
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 log = logging.getLogger('eft_cap.main')
 
 
@@ -33,17 +33,12 @@ d1 = '(udp.SrcPort >= 16900 and udp.SrcPort <= 17100)'
 
 
 async def capture():
-    import pydivert  # linux support
-    with pydivert.WinDivert(f'{s1} or {d1}') as w:
-        for packet in w:
-            yield {
-                'data': packet.payload,
-                'incoming': packet.is_inbound,
-            }
-            # print(f'Packet: {packet}')
-            # with open('packet.bin', 'wb') as f:
-            #     f.write(packet.payload)
-            # break
+    from eft_cap.tzsp import run
+    q = asyncio.Queue()
+    asyncio.create_task(run(q.put_nowait))
+    while True:
+        yield await q.get()
+
 
 
 def n_separated_file(name):
@@ -54,18 +49,37 @@ def n_separated_file(name):
             line = f.readline()
 
 
+def from_shark(packet):
+    udp = packet["_source"]["layers"]['udp']
+    ip = packet["_source"]["layers"]['ip']
+    if 'data' not in packet["_source"]["layers"]:
+        return
+    data = bytes.fromhex(packet["_source"]["layers"]["data"]["data.data"].replace(':', ''))
+    return {
+        'data': data,
+        'incoming': ip['ip.dst'].startswith('192.168.88.')
+    }
+
+
+def from_log(packet):
+    data = bytes.fromhex(packet['data'].replace(':', ''))
+    return {
+        **packet,
+        'data': data,
+    }
+
+
 async def from_file(args):
+    decoder = None
     for packet in n_separated_file(args.packets_file):
-        udp = packet["_source"]["layers"]['udp']
-        ip = packet["_source"]["layers"]['ip']
-        if 'data' not in packet["_source"]["layers"]:
-            continue
-        data = bytes.fromhex(packet["_source"]["layers"]["data"]["data.data"].replace(':', ''))
-        # print(f'{data} / {udp}')
-        yield {
-            'data': data,
-            'incoming': ip['ip.dst'].startswith('192.168.88.')
-        }
+        if decoder is None:
+            if 'incoming' in packet:
+                decoder = from_log
+            else:
+                decoder = from_shark
+        ret = decoder(packet)
+        if ret:
+            yield ret
         await asyncio.sleep(args.packet_delay)
 
 
