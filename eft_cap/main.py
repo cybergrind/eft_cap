@@ -92,7 +92,7 @@ def main():
 
     for i in range(0):
         next(p_source)
-    t = NetworkTransport(p_source)
+    t = NetworkTransport(p_source, args)
     loop = asyncio.get_event_loop()
     if args.tk:
         app = App(loop)

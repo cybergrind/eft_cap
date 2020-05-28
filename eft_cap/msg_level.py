@@ -13,6 +13,10 @@ from array import array
 from functools import wraps
 from pprint import pprint
 from typing import TYPE_CHECKING
+import vg
+from scipy.spatial.transform import Rotation
+
+import numpy as np
 
 from eft_cap import ParsingError, bprint, split, split_16le
 
@@ -148,10 +152,7 @@ def packed(fmt, single=True):
         @wraps(func)
         def _inner(*args, **kwargs):
             bin_resp = func(*args, **kwargs)
-            try:
-                unpacked = struct.unpack(fmt, bin_resp)
-            except Exception:
-                exit(27)
+            unpacked = struct.unpack(fmt, bin_resp)
             return unpacked[0] if single else unpacked
 
         return _inner
@@ -268,11 +269,6 @@ class BitStream:
         remains = len(self.stream) - self.bit_offset
         if required > remains:
             self.log.error(f"Need: {required} Remains: {remains} Offset: {self.bit_offset}")
-            try:
-                raise Exception
-            except Exception as e:
-                self.log.exception("ee")
-            exit(11)
             raise ParsingError(f"Need: {required} Remains: {remains} Offset: {self.bit_offset}")
 
         if self.aligned:
@@ -392,11 +388,49 @@ class Map(ParsingMethods):
         return self.bound_min, self.bound_max
 
 
+def unit_vector(vector):
+    """ Returns the unit vector of the vector"""
+    return vector / np.linalg.norm(vector)
+
+
+def angle(vector1, vector2):
+    """ Returns the angle in radians between given vectors"""
+    v1_u = unit_vector(vector1)
+    v2_u = unit_vector(vector2)
+    minor = np.linalg.det(
+        np.stack((v1_u[-2:], v2_u[-2:]))
+    )
+    if minor == 0:
+        raise NotImplementedError('Too odd vectors =(')
+    return math.degrees(np.sign(minor) * np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)))
+
+
+def norm_angle(angl):
+    if angl > 180:
+        angl -= 360
+    if angl < -180:
+        angl += 360
+    return angl
+
+
+def fwd_vector(pitch, yaw, pos):
+    elevation = math.radians(-pitch)
+    heading = math.radians(yaw)
+    return {
+        'x': math.cos(elevation) * math.sin(heading),
+        'y': math.sin(elevation),
+        'z': math.cos(elevation) * math.cos(heading),
+    }
+
+
 class Player(ParsingMethods):
     log = logging.getLogger('Player')
 
     def __init__(self, msg, me=False):
         self.me = me
+        if not msg:
+            return
+
         if me:
             GLOBAL['me'] = self
 
@@ -443,24 +477,81 @@ class Player(ParsingMethods):
         side = info.get("Side")
         self.side = "SCAV" if side == "Savage" else side
 
-        self.log.info(f"OBS POS: {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}")
+        self.log.info(f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}")
 
     def __str__(self):
         return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}[{self.cid}]'
+
+    @staticmethod
+    def dummy(cid, me=False):
+        print(f'Create dummy player: {me} / {cid}')
+        player = Player(msg=None, me=me)
+        player.cid = cid
+        player.lvl = -1
+        player.side = f'UNK'
+        player.nickname = f'Unk:me={me}'
+        player.is_npc = False
+        player.surv_class = 'UNK'
+        player.is_alive = True
+        player.pos = {'x': 0, 'y': 0, 'z': 0}
+        player.rot = {'x': 0, 'y': 0, 'z': 0}
+        PLAYERS[cid] = player
+        return player
 
     @property
     def rnd_pos(self):
         return {
             'x': round(self.pos['x'], 2),
             'y': round(self.pos['y'], 2),
-            'z': round(self.pos['x'], 2),
+            'z': round(self.pos['z'], 2),
         }
 
+    def angle(self):
+        me = GLOBAL['me']
+        if not me:
+            return 0
+        if self.me:
+            ret = -int(norm_angle(self.rot['x'] + 90))
+            return f'{ret}/{int(self.rot["x"])}'
+        me = GLOBAL['me']
+        mx = me.pos['x']
+        mz = me.pos['z']
+        x = self.pos['x']
+        z = self.pos['z']
+        v1 = np.array([0, 0, -1], np.float)
+        v2 = np.array([mx - x, 0, mz - z], np.float)
+
+        angl = vg.signed_angle(v2, v1, look=vg.basis.y) + me.rot['x']
+        if angl == np.NaN:
+            return 0
+        return -int(norm_angle(angl))
+
+        # angl = int(angle(v2, v1) - me.rot['x'])
+        # return norm_angle(angl)
+
+    @property
+    def yaw(self):
+        return self.rot['x']
+
+    @property
+    def pitch(self):
+        return self.rot['y']
+
+    @property
+    def fwd_vector(self):
+        vec = fwd_vector(self.pitch, self.yaw, self.pos)
+        return vec
+
     def dist(self):
-        return round(dist(self.pos, GLOBAL['me'].pos), 4)
+        me = GLOBAL['me']
+        if not me:
+            return 0
+        return round(dist(self.pos, me.pos), 4)
 
     def vdist(self):
         me = GLOBAL['me']
+        if not me:
+            return 0
         return round(self.pos['y'] - me.pos['y'], 3)
 
     def print(self, msg, *args, **kwargs):
@@ -532,8 +623,8 @@ class Player(ParsingMethods):
             # self.data.read_bits(20)
             self.log.debug(f'DT: {dt}/ {rtt} /F1: {frame} {frame2}.  {self.msg}')
             # self.data.bit_offset -= 3
-            self.update_position()
-            self.update_rotation()
+            if self.update_position():
+                self.update_rotation()
 
     exit = math.inf
 
@@ -550,6 +641,8 @@ class Player(ParsingMethods):
                 q_z = FloatQuantizer(-1, 1, Q_LOW)
             else:
                 curr_map = GLOBAL["map"]  # type: Map
+                if not curr_map:
+                    return
                 _min = curr_map.bound_min
                 _max = curr_map.bound_max
                 q_x = FloatQuantizer(_min["x"], _max["x"], Q_LOW)
@@ -577,9 +670,9 @@ class Player(ParsingMethods):
                 self.pos["z"] = dz
 
             self.log.debug(
-                f"Moved: {last_pos} => {self.pos} {GLOBAL['map'].bb}: PARTIAL: {partial}"
+                f"Moved: {last_pos} => {self.pos} PARTIAL: {partial}"
             )
-            if check:
+            if check and False:
                 bb_min, bb_max = GLOBAL["map"].bb
                 if not (bb_min["y"] <= self.pos["y"] <= bb_max["y"]):
                     self.log.debug(f'BB IS: {GLOBAL["map"].bb}')
@@ -592,6 +685,7 @@ class Player(ParsingMethods):
                 assert bb_min["z"] <= self.pos["z"] <= bb_max["z"]
         else:
             self.log.debug(f"Rest is: {self.data.bit_offset} Size: {len(self.data.stream)}")
+        return True
 
     def quant_position(self):
         bb_min, bb_max = GLOBAL["map"].bb
@@ -600,13 +694,14 @@ class Player(ParsingMethods):
         self.pos['z'] = max(bb_min['z'], min(bb_max['z'], self.pos['z']))
 
     def update_rotation(self):
-        if self.data.read_u8():
-            qx = FloatQuantizer(0, 360, 0.015625)
-            qy = FloatQuantizer(-90, 90, 0.015625)
+        if self.data.read_bits(1):
+            qx = FloatQuantizer(0.0, 360.0, 0.015625)
+            qy = FloatQuantizer(-90.0, 90.0, 0.015625)
             before = copy.copy(self.rot)
-            self.rot["x"] = qx.read(self.data)
+            self.rot["x"] = min(360.0, qx.read(self.data))
             self.rot["y"] = qy.read(self.data)
-            # print(f'Rotated: {before} => {self.rot}')
+            # if self.me:
+            #     print(f'Rotated: {self.fwd_vector}')
 
 
 class MsgDecoder(ParsingMethods):
@@ -621,7 +716,7 @@ class MsgDecoder(ParsingMethods):
         self.decoded = False
 
     def __str__(self):
-        return f'<MSG:{self.op_type} PKT:{self.curr_packet["num"]}/{self.curr_packet["len"]}>'
+        return f'<MSG:{self.op_type} MLEN: {self.len} PKT:{self.curr_packet["num"]}/{self.curr_packet["len"]}>'
 
     def parse(self, stream):
         # print('parse in MsgDecoder')
@@ -631,7 +726,7 @@ class MsgDecoder(ParsingMethods):
         self.op_type, stream = split_16le(stream)
         self.content, stream = split(stream, self.len)
 
-        # print(f'LEN: {msg["len"]} OP: {self.op_type}')
+        self.log.debug(f'M: {self}')
         # stream.print_rest()
         self.try_decode()
         # print(msg)
@@ -678,6 +773,9 @@ class MsgDecoder(ParsingMethods):
                     print("Exit 22")
                     exit(22)
                 self.update_world(up_data)
+        else:
+            self.log.warning(f'Cannot process: {self}')
+
         if MsgDecoder.exit <= 0:
             print("Exit 20")
             exit(20)
@@ -686,9 +784,12 @@ class MsgDecoder(ParsingMethods):
 
     def update_player(self, up_data: BitStream):
         # get by `channel_id` or `channel_id - 1`
-        # player = PLAYERS.get(self.channel_id, PLAYERS.get(self.channel_id - 1, None))  # type: Player
+        player = PLAYERS.get(self.channel_id, PLAYERS.get(self.channel_id - 1, None))  # type: Player
 
-        player = PLAYERS.get(self.channel_id, None)  # type: Player
+        # player = PLAYERS.get(self.channel_id, None)  # type: Player
+        if not player: # and self.channel_id % 2 == 1:
+            player = Player.dummy(self.channel_id)
+
         if not player:
             # print(f'NO PLAYER: {self.channel_id} : {list(PLAYERS.keys())}')
             if MsgDecoder.skip_unk_player > 0:
@@ -705,6 +806,9 @@ class MsgDecoder(ParsingMethods):
         # if self.curr_packet['num'] == 1433:
         #     self.log.debug(f'{bytes(up_data.rest)}')
         #     exit(112)
+        if not GLOBAL['me']:
+            GLOBAL['me'] = Player.dummy(self.channel_id, me=True)
+
         GLOBAL['me'].update_me(self, up_data)
 
     def update_world(self, up_data):

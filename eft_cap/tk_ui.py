@@ -61,7 +61,6 @@ class App(tk.Tk):
         b.txt = var
         return b
 
-
     async def update_loop(self):
         while True:
             players = []
@@ -70,7 +69,7 @@ class App(tk.Tk):
             player: Player
             for player in PLAYERS.values():
                 row = [
-                    player.dist(), f'{player.vdist()}', str(player), str(player.rnd_pos), str(player.is_alive)
+                    player.dist(), f'{player.vdist()}', player.angle(), str(player), str(player.rnd_pos), str(player.is_alive)
                 ]
                 if player.is_alive:
                     players.append(row)
@@ -80,7 +79,7 @@ class App(tk.Tk):
             dead_players = sorted(dead_players)
 
             self.draw_table(
-                ['Dist', 'VDist', 'Name', 'Coord', 'Is Alive'],
+                ['Dist', 'VDist', 'Angle', 'Name', 'Coord', 'Is Alive'],
                 # [f'Head: {i}' for i in range(10)],
                 # [[f'Inner: {x}/{y}/ {time.time()}' for x in range(10)] for y in range(6)]
                 [*players, *dead_players]
