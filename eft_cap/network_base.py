@@ -64,7 +64,7 @@ class NetworkTransport:
         self.src = src
         self.acks_in = Acks('inbound')
         self.acks_out = Acks('outbound')
-        self.fragmented = {}
+        self.fragmented = {True: {0: [], 1: [], 2: []}, False: {0: [], 1: [], 2: []}}
         self.log_path = None
         self.packet_log = None
         self.init_packet_log()
@@ -148,10 +148,11 @@ class NetworkTransport:
                 assert len(stream) == 27
                 if len(stream) == 27:
                     sess_id, = struct.unpack('<H', stream[25:])
-                    if sess_id not in self.session_ok:
-                        self.session_ok.append(sess_id)
+                    self.trust_session(sess_id)
                 return
             elif op == Z_INIT:
+                sess_id, = struct.unpack(('<H', stream[5:7]))
+                self.trust_session(sess_id)
                 self.new_session()
                 return
         else:
@@ -160,7 +161,7 @@ class NetworkTransport:
             b_cps, stream = split(stream, 6)
             # print(f'Parse: {b_cps}')
             (connection_id, packet_id, session_id) = struct.unpack('>HHH', b_cps)
-            if False and session_id not in self.session_ok:
+            if session_id not in self.session_ok:
                 self.log.info(f'Skip packet, no session: {session_id} vs {self.session_ok}')
                 self.log.info(self.curr_packet)
                 return
@@ -187,6 +188,10 @@ class NetworkTransport:
             self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
             # exit(16)
 
+    def trust_session(self, sess_id):
+        if sess_id not in self.session_ok:
+            self.session_ok.append(sess_id)
+
     def add_msg(self, ctx, msg=None):
         ctx.setdefault('message', []).append({
             'channel_id': ctx['channel_id'],
@@ -195,22 +200,11 @@ class NetworkTransport:
             'msg': msg,
         })
 
-    def check_fragmented(self, inner):
-        max_idx = max(inner)
-        fragments = []
-        for i in range(max_idx):
-            if i not in fragments:
-                return False
-            fragments.append(inner[i])
-        bin_msg = b''.join(fragments)
-        if len(bin_msg) < 2:
-            return False
-        tgt_len, bin_msg_rest = split_16le(bin_msg)
-        if len(bin_msg_rest) == tgt_len:
-            print('Done')
-            if self.replay:
-                exit(1)
-        return False
+    def without_fragment(self, _id, fragments):
+        for fragment in fragments:
+            if fragment['frag_id'] == _id:
+                continue
+            yield fragment
 
     def get_next_message(self, stream, ctx):
         # https://forum.unity.com/threads/binary-protocol-specification.417831/#post-3495130
@@ -251,35 +245,33 @@ class NetworkTransport:
                     bfrag, fragm_stream = split(fragm_stream, 3)
                     frag_id, frag_idx, frag_amnt = struct.unpack('>BBB', bfrag)
 
-                    frag_id = f'{ctx["incoming"]}_{inner_channel_id}_{frag_id}'
-                    # print(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
-                    # _, stream = split(stream, 4)
-                    if frag_id not in self.fragmented:
-                        self.fragmented[frag_id] = {}
-                    inner = self.fragmented[frag_id]
-                    if frag_idx in inner:
-                        if inner[frag_idx] != fragm_stream:
+                    fragment = self.get_fragment(ctx, frag_id, inner_channel_id)
+                    chunks = fragment['chunks']
 
-                            print(f'I: {inner.keys()}')
-                            print(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
-                            print(inner[frag_idx])
-                            print(fragm_stream)
-                            # print('Exit 199')
+                    self.log.debug(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
+                    # _, stream = split(stream, 4)
+
+                    if frag_idx in chunks:
+                        if chunks[frag_idx] != fragm_stream:
+                            self.log.warning(f'I: {chunks.keys()}')
+                            self.log.warning(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
+                            self.log.warning(chunks[frag_idx])
+                            self.log.warning(fragm_stream)
                             if self.replay:
+                                print('Exit 199')
                                 exit(199)
-                    inner[frag_idx] = fragm_stream
-                    self.log.debug(f'{frag_idx}: ID: {frag_id} LEN: {len(inner)} VS {frag_amnt}/')
+
+                    chunks[frag_idx] = fragm_stream
+
+                    self.log.debug(f'{frag_idx}: ID: {frag_id} LEN: {len(fragment)} VS {frag_amnt}/')
                     if len(self.fragmented) > 0:
                         self.log.debug(f'FRAGMENTED: {list(self.fragmented)}')
 
-                    if self.check_fragmented(inner):
-                        pass
-
-                    if len(self.fragmented[frag_id]) == frag_amnt: # or frag_idx == frag_amnt - 1:
+                    if len(chunks) == frag_amnt: # or frag_idx == frag_amnt - 1:
                         fragments = []
-                        minv = min(inner)
-                        for i in range(minv, frag_amnt):
-                            fragments.append(self.fragmented[frag_id][i])
+                        for i in range(frag_amnt):
+                            fragments.append(chunks[i])
+
                         bin_msg = b''.join(fragments)
                         self.log.debug(f'Assemble {frag_id} LEN: {len(bin_msg)}')
                         # print(bin_msg)
@@ -299,7 +291,8 @@ class NetworkTransport:
                         # assert bin_msg == b''
                         # print(f'Msg: {msg.op_type}')
                         yield True, msg
-                        del self.fragmented[frag_id]
+                        chan_fragments = self.fragmented[ctx['incoming']][inner_channel_id]
+                        chan_fragments[:] = self.without_fragment(frag_id, chan_fragments)
                     else:
                         yield False, stream
                 elif inner_channel_id == M_MSG_COMBINED:
@@ -369,6 +362,31 @@ class NetworkTransport:
             else:
                 yield False, stream
 
+    def get_fragment(self, ctx, frag_id, inner_channel_id):
+        key = f'{ctx["incoming"]}_{inner_channel_id}_{frag_id}'
+        fragmented = self.fragmented[ctx['incoming']][inner_channel_id]
+        if len(fragmented) == 0:
+            fragment = {'frag_id': frag_id, 'chunks': {}}
+            fragmented.append(fragment)
+
+        elif len(fragmented) == 1:
+            fragment = fragmented[0]
+            if fragment['frag_id'] != frag_id:
+                fragment = {'frag_id': frag_id, 'chunks': {}}
+                fragmented.append(fragment)
+        else:
+            fragment = fragmented[-1]
+            if fragment['frag_id'] != frag_id:
+                fragment = {'frag_id': frag_id, 'chunks': {}}
+                fragmented.append(fragment)
+
+            for maybe_stale in list(fragmented[:-1]):
+                stale_id = fragment['frag_id']
+                if abs(stale_id - frag_id) > 4:
+                    self.log.debug(f'Drop stale fragment: {key}')
+                    fragmented[:] = self.without_fragment(stale_id, fragmented)
+        return fragment
+
     def extractMessageHeader(self, stream, ctx):
         channel_id, stream = split_8(stream)
         ctx['channel_id'] = channel_id
@@ -389,7 +407,7 @@ class NetworkTransport:
     def new_session(self):
         """Called when new game has started"""
         self.log.warning('New session')
-        self.fragmented = {}
+        self.fragmented = {True: {0: [], 1: [], 2: []}, False: {0: [], 1: [], 2: []}}
         clear_global()
         self.session_ok = []
         self.init_packet_log()
