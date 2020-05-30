@@ -26,11 +26,11 @@ def get_description(template_id):
         raise LootParsingError(f'Wrong TemplateID: {template_id!r}')
 
     if not DB_EXISTS:
-        return
+        return {'name': template_id}
     p_name = f'{template_id}.json'
     f_item = DB_ITEMS.joinpath(p_name)
     if not f_item.exists():
-        return
+        return {'name': template_id}
     out = {}
     j_data = json.loads(f_item.read_text(encoding='utf8'))
     out['name'] = j_data.get('_name')
@@ -70,6 +70,33 @@ def read_stack_slot(d: ByteStream, ctx):
     return ret
 
 
+def recurse_item(item, func, nesting=0, ctx={}):
+    skip_recurse = func(item, nesting=nesting, ctx=ctx)
+    if skip_recurse:
+        return
+
+    for slot in item['slots']:
+        recurse_item(
+            slot['contained_item'], func, nesting=nesting + 1, ctx={'parent': ctx, 'slot': slot}
+        )
+    for grid in item['grid']:
+        for grid_item in grid['items']:
+            recurse_item(
+                grid_item['item'],
+                func,
+                nesting=nesting + 1,
+                ctx={'parent': ctx, 'grid': grid, 'grid_item': grid_item},
+            )
+    for stack_slot in item['stack_slots']:
+        for inner_item in stack_slot['items']:
+            recurse_item(
+                inner_item,
+                func,
+                nesting=nesting + 1,
+                ctx={'parent': ctx, 'stack_slot': stack_slot, 'inner_item': inner_item},
+            )
+
+
 def read_item(d: ByteStream, ctx):
     d.store_pos()
     components = []
@@ -90,6 +117,7 @@ def read_item(d: ByteStream, ctx):
 
     # print(out)
     out['info'] = get_description(out['template_id'])
+    out['name'] = out['info']['name']
     if 'top' in ctx and out['info'] and 'price' in out['info']:
         ctx['top']['total_price'] += out['info']['price'] * out['stack_count']
 
@@ -140,6 +168,7 @@ def json_loot(d: ByteStream, ctx):
         ctx.pop('top')
 
     return out
+
 
 def resource_key(d: ByteStream, ctx: dict):
     out = {}
@@ -197,7 +226,7 @@ def read_medkit(d: ByteStream, ctx: dict):
 
 
 def read_quaterion(d: ByteStream, ctx: dict):
-    return np.array([d.read_f32(), d.read_f32(), d.read_f32(),d.read_f32()])
+    return np.array([d.read_f32(), d.read_f32(), d.read_f32(), d.read_f32()])
 
 
 def read_transform(d: ByteStream, ctx: dict):
@@ -215,13 +244,12 @@ def read_location_in_grid(d: ByteStream, ctx: dict):
     return {'x': d.read_u32(), 'y': d.read_u32(), 'rot': d.read_u32(), 'is_searched': d.read_bool()}
 
 
-
 def read_weighted_loot_spawn(d: ByteStream, ctx: dict):
     return {
         'name': d.read_string(),
         'weight': d.read_f32(),
         'pos': read_vector3(d, ctx),
-        'rot': read_vector3(d, ctx)
+        'rot': read_vector3(d, ctx),
     }
 
 
@@ -247,10 +275,8 @@ def read_fast_access(d: ByteStream, ctx: dict):
 
 
 def read_slot_desc(d: ByteStream, ctx: dict):
-    return {
-        'id': d.read_string(),
-        'contained_item': read_item(d, ctx)
-    }
+    return {'id': d.read_string(), 'contained_item': read_item(d, ctx)}
+
 
 def read_item_in_grid(d: ByteStream, ctx: dict):
     return {
@@ -308,7 +334,6 @@ def read_tag(d: ByteStream, ctx: dict):
 
 
 def json_corpse(d: ByteStream, ctx: dict):
-
     customizations = {}
     out = {'customizations': customizations}
 

@@ -13,7 +13,7 @@ import numpy as np
 
 from eft_cap import bprint, split, split_16le
 from eft_cap.bin_helpers import ByteStream, BitStream, FloatQuantizer
-from eft_cap.loot import read_many_polymorph
+from eft_cap.loot import read_many_polymorph, read_item, recurse_item
 from eft_cap.trig_helpers import norm_angle, angle, fwd_vector, dist, quaternion_to_euler
 
 if TYPE_CHECKING:
@@ -58,13 +58,17 @@ class Loot:
         if not loot:
             return
         for item in loot:
+            total_price = item.get('total_price', 0)
             if 'id' not in item:
                 if 'item' not in item:
                     continue
-                item['id'] = item['item']['id']
+                name = item['item']['name']
+                x = int(item['position'][0])
+                z = int(item['position'][2])
+                item['id'] = f'{name}_{x}_{z}'
             if self.is_ignored(item):
                 self.hidden[item['id']] = item
-            elif item.get('total_price', 0) < self.PRICE_TRESHOLD:
+            elif total_price < self.PRICE_TRESHOLD:
                 self.hidden[item['id']] = item
             else:
                 self.by_id[item['id']] = item
@@ -111,7 +115,8 @@ class Loot:
 
     PRICE_TRESHOLD = 20000
 
-    IGNORE = ['quest_']
+    # IGNORE = ['quest_']
+    IGNORE = []
 
     def is_ignored(self, item):
         name = item.get('name', 'NO NAME')
@@ -134,10 +139,13 @@ class Loot:
 
 
     def item_to_row(self, item):
+        name = item.get('name', 'NO NAME')
+        # if name == 'quest_sas_san1':
+        #     pprint(item)
         return [
             item.get('dist', '-'), item.get('vdist', '-'),
             item.get('angle', '-'),
-            item.get('name', 'NO NAME'),
+            f'{name}',
             f'Price: {item.get("total_price", "unk")}', {'text': 'disable', 'callback': lambda x: self.hide(item['id'])}
         ]
 
@@ -151,7 +159,7 @@ class Loot:
         rows = self.get_loot(self.by_dist, 3)
         # print(rows[0])
         if self.by_price:
-            rows.extend(self.get_loot(self.by_price, 3))
+            rows.extend(self.get_loot(self.by_price, 15))
         return rows
 
     def display_loot(self):
@@ -236,8 +244,11 @@ class Map(ParsingMethods):
 class Player(ParsingMethods):
     log = logging.getLogger('Player')
 
-    def __init__(self, msg, me=False):
+    def __init__(self, msg: MsgDecoder, me=False):
         self.me = me
+        self.price = 0
+        self.loot_price = 0
+        self.price_class = '-1'
         if not msg:
             return
 
@@ -256,6 +267,20 @@ class Player(ParsingMethods):
         PLAYERS[self.cid] = self
         self.log = logging.getLogger(f'{self}')
 
+    def update_loot_price(self):
+        _my_total_price = 0
+        SKIP = ['SecuredContainer', 'Scabbard']
+
+        def tot(item, nesting, ctx):
+            nonlocal _my_total_price
+            if nesting == 1 and ctx.get('slot', {}).get('id', None) in SKIP:
+                return True  # skip
+            _my_total_price += item['info'].get('price', 0) * item['stack_count']
+
+        recurse_item(self.inventory, tot)
+        self.loot_price = _my_total_price
+        self.update_price_class()
+
     def deserialize_initial_state(self):
         unk2 = self.data.read_u8()
         self.is_alive = self.data.read_u8() == 1
@@ -265,6 +290,20 @@ class Player(ParsingMethods):
         pose_lvl = self.data.read_f32()
 
         inv_bin = self.read_size_and_bytes()
+        try:
+            top_ctx = {'total_price': 0}
+            ctx = {'top': top_ctx}
+            self.inventory = read_item(ByteStream(inv_bin), ctx=ctx)
+        except:
+            self.log.exception('During decode')
+            if self.msg.transport.replay:
+                print('exit 112')
+                exit(112)
+
+        # print(f'TP: {ctx}')
+        self.price = top_ctx['total_price']
+        self.update_loot_price()
+
         prof_zip = self.read_size_and_bytes()
         self.prof = json.loads(zlib.decompress(prof_zip))
         self.full_prof = copy.copy(self.prof)
@@ -286,11 +325,19 @@ class Player(ParsingMethods):
         self.is_npc = self.is_scav and self.prof.get('aid') == '0'
         side = info.get("Side")
         self.side = "SCAV" if side == "Savage" else side
-
         self.log.info(f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}")
 
+    def update_price_class(self):
+        if self.loot_price < 10000:
+            self.price_class = '<10k'
+            self.price_class = f'{self.loot_price}Rub'
+        elif self.loot_price < 1000000:
+            self.price_class = f'{self.loot_price // 1000}K'
+        else:
+            self.price_class = f'{round(self.loot_price / 1000_0000, 2)}M'
+
     def __str__(self):
-        return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}[{self.cid}]'
+        return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}:{self.price_class}[{self.cid}]'
 
     @staticmethod
     def dummy(cid, me=False):
@@ -591,17 +638,22 @@ class MsgDecoder(ParsingMethods):
         self.log.debug(f"Update player: {player}")
         player.update(self, up_data)
 
-    def update_outbound(self, up_data):
+    def update_outbound(self, up_data: BitStream):
         # if self.curr_packet['num'] == 1433:
         #     self.log.debug(f'{bytes(up_data.rest)}')
         #     exit(112)
         if not GLOBAL['me']:
             GLOBAL['me'] = Player.dummy(self.channel_id, me=True)
-
         GLOBAL['me'].update_me(self, up_data)
 
-    def update_world(self, up_data):
-        pass
+    def update_world(self, up_data: BitStream):
+        up_data.read_bits(4)  # skip
+        if up_data.read_bits(1):  # loot sync
+            num = up_data.read_limited_bits(1, 64)
+            for i in range(num):
+                _id = up_data.read_u32()
+                if up_data.read_bits(1):
+                    pass
 
     def try_decode(self):
         t = time.time()
