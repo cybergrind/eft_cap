@@ -62,7 +62,12 @@ class Loot:
                 if 'item' not in item:
                     continue
                 item['id'] = item['item']['id']
-            self.by_id[item['id']] = item
+            if self.is_ignored(item):
+                self.hidden[item['id']] = item
+            elif item.get('total_price', 0) < self.PRICE_TRESHOLD:
+                self.hidden[item['id']] = item
+            else:
+                self.by_id[item['id']] = item
         self.update_by_price()
 
     def update_by_price(self):
@@ -104,14 +109,35 @@ class Loot:
             item['vdist'] = round(item_pos[1] - me.pos[1], 1)
         self.update_by_dist()
 
+    PRICE_TRESHOLD = 20000
+
+    IGNORE = ['quest_']
+
+    def is_ignored(self, item):
+        name = item.get('name', 'NO NAME')
+        for i in self.IGNORE:
+            if name.startswith(i):
+                return True
+
+    def get_loot(self, items, num):
+        out = []
+        # remove quest_
+        for item in items:
+            out.append(item)
+            if len(out) >= num:
+                break
+        return out
+
+
     def update_by_dist(self):
         self.by_dist = sorted(self.by_id.values(), key=lambda x: x['dist'])
+
 
     def item_to_row(self, item):
         return [
             item.get('dist', '-'), item.get('vdist', '-'),
             item.get('angle', '-'),
-            item.get('item', {}).get('info', {}).get('name', 'NO NAME'),
+            item.get('name', 'NO NAME'),
             f'Price: {item.get("total_price", "unk")}', {'text': 'disable', 'callback': lambda x: self.hide(item['id'])}
         ]
 
@@ -122,10 +148,10 @@ class Loot:
 
         if not self.by_dist:
             return []
-        rows = self.by_dist[:3]
+        rows = self.get_loot(self.by_dist, 3)
         # print(rows[0])
         if self.by_price:
-            rows.extend(self.by_price[:3])
+            rows.extend(self.get_loot(self.by_price, 3))
         return rows
 
     def display_loot(self):

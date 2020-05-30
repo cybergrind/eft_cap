@@ -83,7 +83,7 @@ class App(tk.Tk):
                 else:
                     dead_players.append(row)
             players = sorted(players, key=lambda x: x[0])
-            dead_players = sorted(dead_players, key=lambda x: x[0])
+            dead_players = sorted(dead_players, key=lambda x: x[0])[:4]
             loot = GLOBAL['loot'].display_loot()
 
             self.draw_table(
