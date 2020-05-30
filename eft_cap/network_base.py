@@ -82,8 +82,12 @@ class NetworkTransport:
     async def run(self, limit=None):
         # packet -> {'data', 'incoming'}
         self.packet_num = -1
+        skip_num = self.args.skip
         async for packet in self.src:
             self.packet_num += 1
+            if skip_num and skip_num > self.packet_num:
+                continue
+
             if self.packet_num % 500 == 0:
                 self.log.info(f'Packet: {self.packet_num}')
             if limit and self.packet_num >= limit:
@@ -93,7 +97,7 @@ class NetworkTransport:
                 self.process_packet(packet)
                 await asyncio.sleep(0)
             except Exception as e:
-                self.log.exception(f'When process_packet: {packet["len"]}/{packet["num"]}')
+                self.log.exception(f'When process_packet: Len: {packet["len"]} Num: {packet["num"]}')
                 with open('error.packet', 'wb') as f:
                     pickle.dump(packet, f)
                 # bprint(packet['data'])
@@ -101,7 +105,7 @@ class NetworkTransport:
                 if self.replay:
                     exit(19)
         print(f'All packets were read')
-        await asyncio.sleep(300)
+        # await asyncio.sleep(300)
 
     def bin_to_str(self, bytestring):
         out = []
@@ -179,7 +183,7 @@ class NetworkTransport:
                     # self.new_session()
                     pass
         if len(stream) > 0:
-            bprint(stream)
+            # bprint(stream)
             self.log.warning(f'Cannot process packet: {self.packet_num} => {packet}')
             # exit(16)
 
@@ -207,7 +211,6 @@ class NetworkTransport:
             if self.replay:
                 exit(1)
         return False
-
 
     def get_next_message(self, stream, ctx):
         # https://forum.unity.com/threads/binary-protocol-specification.417831/#post-3495130
@@ -329,6 +332,7 @@ class NetworkTransport:
             print('Exit 14')
             if self.replay:
                 exit(14)
+
         elif channel_id == M_MSG_COMBINED:
             print(self.curr_packet)
             print('Exit 4')
@@ -346,9 +350,10 @@ class NetworkTransport:
                     exit(111)
             msg_stream, stream = split(stream, msg_len)
             # print(f'Split msg stream: {len(msg_stream)} Rest: {len(stream)}')
-            msg_id, msg_stream = split_16(msg_stream)
-            ordered_id, msg_stream = split_8(msg_stream)
-            ctx['msg_id'] = msg_id
+            if len(msg_stream) >= msg_len:
+                msg_id, msg_stream = split_16(msg_stream)
+                ordered_id, msg_stream = split_8(msg_stream)
+                ctx['msg_id'] = msg_id
             while len(msg_stream) > 3:
                 msg = MsgDecoder(self, ctx)
                 # bprint(stream)

@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import tkinter as tk
+from pprint import pprint
 
-from eft_cap.msg_level import PLAYERS, Player
+from eft_cap.msg_level import PLAYERS, Player, GLOBAL
 
 
 class App(tk.Tk):
@@ -49,9 +50,14 @@ class App(tk.Tk):
 
         # self.log.debug(f'NUM ROWS: {len(self.rows)} / {len(rows)}')
         for row_1, row in enumerate([headers, *rows]):
-            for col, text in enumerate(row):
+            for col, content in enumerate(row):
                 cell = self.rows[row_1][col]
-                cell.txt.set(f' {text} ')
+                if isinstance(content, dict):
+                    cell.txt.set(f' {content["text"]} ')
+                    cell.bind('<Button-1>', content["callback"])
+                else:
+                    cell.txt.set(f' {content} ')
+                    cell.bind('<Button-1>', lambda x: "break")
 
     def draw_cell(self, row, col, text):
         var = tk.StringVar()
@@ -69,23 +75,25 @@ class App(tk.Tk):
             player: Player
             for player in PLAYERS.values():
                 row = [
-                    player.dist(), f'{player.vdist()}', player.angle(), str(player), str(player.rnd_pos), str(player.is_alive)
+                    player.dist(), f'{player.vdist()}', player.angle(), str(player),
+                    str(player.rnd_pos), str(player.is_alive)
                 ]
                 if player.is_alive:
                     players.append(row)
                 else:
                     dead_players.append(row)
-            players = sorted(players)
-            dead_players = sorted(dead_players)
+            players = sorted(players, key=lambda x: x[0])
+            dead_players = sorted(dead_players, key=lambda x: x[0])
+            loot = GLOBAL['loot'].display_loot()
 
             self.draw_table(
                 ['Dist', 'VDist', 'Angle', 'Name', 'Coord', 'Is Alive'],
                 # [f'Head: {i}' for i in range(10)],
                 # [[f'Inner: {x}/{y}/ {time.time()}' for x in range(10)] for y in range(6)]
-                [*players, *dead_players]
+                [*players, *dead_players, *loot]
             )
             self.update()
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1)
 
     def destroy(self):
         self.loop.stop()

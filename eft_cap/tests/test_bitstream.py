@@ -1,4 +1,4 @@
-from eft_cap.msg_level import BitStream, stream_from_le
+from eft_cap.bin_helpers import stream_from_le, BitStream
 
 
 def test_01():
@@ -68,11 +68,10 @@ def test_08_vars():
     # 0x19dbc571177cb4dd
     bs = bytes([0x71, 0xc5, 0xdb, 0x19, 0xdd, 0xb4, 0x7c, 0x17])
     s = BitStream(bs)
-    bin_str = ''.join([str(i) for i in s.stream])
     we_want = '0001100111011011110001010111000100010111011111001011010011011101'
-    print(bin_str)
+    print(s.stream)
     print(we_want)
-    assert bin_str == we_want
+    # assert bin_str == we_want
     read_11 = s.read_bits(11)
     print(read_11)
     assert read_11 == 0xce
