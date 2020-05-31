@@ -77,7 +77,7 @@ def recurse_item(item, func, nesting=0, ctx={}):
 
     for slot in item['slots']:
         recurse_item(
-            slot['contained_item'], func, nesting=nesting + 1, ctx={'parent': ctx, 'slot': slot}
+            slot['contained_item'], func, nesting=nesting + 1, ctx={**ctx, 'slot': slot}
         )
     for grid in item['grid']:
         for grid_item in grid['items']:
@@ -85,7 +85,7 @@ def recurse_item(item, func, nesting=0, ctx={}):
                 grid_item['item'],
                 func,
                 nesting=nesting + 1,
-                ctx={'parent': ctx, 'grid': grid, 'grid_item': grid_item},
+                ctx={**ctx, 'grid': grid, 'grid_item': grid_item},
             )
     for stack_slot in item['stack_slots']:
         for inner_item in stack_slot['items']:
@@ -93,8 +93,49 @@ def recurse_item(item, func, nesting=0, ctx={}):
                 inner_item,
                 func,
                 nesting=nesting + 1,
-                ctx={'parent': ctx, 'stack_slot': stack_slot, 'inner_item': inner_item},
+                ctx={**ctx, 'stack_slot': stack_slot, 'inner_item': inner_item},
             )
+
+
+def get_total_price(item):
+    _my_total_price = 0
+    SKIP = ['SecuredContainer', 'Scabbard']
+    def tot(item, nesting, ctx):
+        nonlocal _my_total_price
+        if nesting == 1 and ctx.get('slot', {}).get('id', None) in SKIP:
+            return True  # skip
+        _my_total_price += item['info'].get('price', 0) * item['stack_count']
+
+    recurse_item(item, tot)
+    return _my_total_price
+
+
+def recurse_delete(item, delete_id):
+    if delete_id == item['id']:
+        return True  # delete = True
+
+    for slot in item['slots']:
+        if recurse_delete(slot['contained_item'], delete_id):
+            slot['contained_item'] = []
+
+    for grid in item['grid']:
+        new_items = []
+        for grid_item in grid['items']:
+            if not recurse_delete(grid_item['item'], delete_id):
+                new_items.append(grid_item)
+        grid['items'] = new_items
+
+    for stack_slot in item['stack_slots']:
+        new_items = []
+
+        for inner_item in stack_slot['items']:
+            if not recurse_delete(inner_item, delete_id):
+                new_items.append(inner_item)
+        stack_slot['items'] = new_items
+
+
+def update_total_price(item):
+    pass
 
 
 def read_item(d: ByteStream, ctx):
@@ -269,8 +310,12 @@ def read_eft_inv_desc(d: ByteStream, ctx: dict):
 
 def read_fast_access(d: ByteStream, ctx: dict):
     out = {'fast_items': {}}
-    for i in range(d.read_u32()):
-        out['fast_items'][d.read_u32()] = d.read_string()
+    num_indexes = d.read_u32()
+    for i in range(num_indexes):
+        idx = d.read_u32()
+        item_id = d.read_string()
+        assert len(item_id) == 0x18
+        out['fast_items'][idx] = item_id
     return out
 
 
@@ -370,13 +415,96 @@ def json_corpse(d: ByteStream, ctx: dict):
     return out
 
 
+def read_move(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'from': read_polymorph(d, ctx),
+        'to': read_polymorph(d, ctx),
+        'move_operation_id': d.read_u16(),
+    }
+
+def read_throw(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'down_direction': d.read_bool(),
+        'throw_operation_id': d.read_u16(),
+    }
+
+
+def read_fold(d: ByteStream, ctx: dict):
+    _id = d.read_string()
+    print(f'ID: {_id}')
+    return {
+        'id': _id,
+        'value': d.read_bool(),
+        'fold_operation_id': d.read_u16(),
+    }
+
+
+def read_magazine(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'check_status': d.read_bool(),
+        'skill_level': d.read_u32(),
+        'check_magazine_operation_id': d.read_u16(),
+    }
+
+
+def read_container(d: ByteStream, ctx: dict):
+    return {
+        'parent_id': d.read_string(),
+        'container_id': d.read_string(),
+    }
+
+
+def read_grid_item_address(d: ByteStream, ctx: dict):
+    return {
+        'location_in_grid': read_location_in_grid(d, ctx),
+        'container': read_container(d, ctx),
+    }
+
+
+def read_bind(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'index': d.read_u32(),
+        'bind_operation': d.read_u16(),
+    }
+
+
+def read_container(d: ByteStream, ctx: dict):
+    return {
+        'parent_id': d.read_string(),
+        'container_id': d.read_string(),
+    }
+
+
+def read_owner_itself(d: ByteStream, ctx: dict):
+    return {
+        'owner_container': read_container(d, ctx),
+    }
+
+
+def stub(id, dct=None):
+    if dct is None:
+        dct= {}
+    dct[id] = lambda x, y: {'type': id, 'stub': True}
+    return dct
+
+def stubs(ids):
+    out = {}
+    for id in ids:
+        stub(id, out)
+    return out
+
 TYPES = {
+    **stubs(range(256)),
     0: read_quaterion,
     1: read_transform,
     2: read_vector3,
     4: read_weighted_loot_spawn,
     5: read_eft_inv_desc,
-    6: read_fast_access,
+    # 6: read_fast_access,
     7: read_slot_desc,
     8: read_item_in_grid,
     9: read_grid,
@@ -399,6 +527,14 @@ TYPES = {
     27: read_key_usages,
     28: json_loot,
     29: json_corpse,
+    34: read_container,
+    35: read_grid_item_address,
+    36: read_owner_itself,
+    41: read_magazine,
+    42: read_bind,
+    45: read_move,
+    51: read_throw,
+    53: read_fold,
     999_66: resource_key,
 }
 
@@ -428,7 +564,8 @@ def read_polymorph(d: ByteStream, ctx):
         ret = parser(d, ctx)
         return ret
     except Exception as e:
-        d.dump_to('json_corpse.bin', 'many_polymorph')
+        if 'many_polymorph' in d.named_positions:
+            d.dump_to('json_corpse.bin', 'many_polymorph')
         print(f'_TYPE: {_type}')
         log.exception('During parsing')
         print('exit 79')

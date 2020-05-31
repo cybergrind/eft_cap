@@ -213,13 +213,17 @@ def stream_from_le(stream, step=4):
 class BitStream:
     log = logging.getLogger("BitStream")
 
-    def __init__(self, stream):
+    def __init__(self, stream, reverse=True):
         self.bit_offset = 0
         self.orig_stream = stream
         be_stream = stream_from_le(stream)
-        bitstring = itertools.chain.from_iterable([to_bits(one_byte) for one_byte in be_stream])
+        if reverse:
+            self.stream_be = itertools.chain.from_iterable([to_bits(one_byte) for one_byte in be_stream])
+        else:
+            self.stream_be = [to_bits(one_byte) for one_byte in stream]
         # self.stream = array("B", bitstring)
-        self.stream = bitarray(bitstring, endian='big')
+        self.length_limit = len(stream) * 8
+        self.stream = bitarray(self.stream_be, endian='big')
         # print(f'Stream: {stream}')
         # b = bitarray(endian='little')
         # self.stream = b.frombytes(bytes(stream))
@@ -256,7 +260,9 @@ class BitStream:
             shift = 8 - bits % 8
         return shift
 
-    def read_bits(self, bits):
+    def read_bits(self, bits=1):
+        if self.bit_offset + bits > self.length_limit:
+            raise ParsingError(f'Overflow: need {bits} have: {self.length_limit - self.bit_offset} L: {self.length_limit}')
         bs = self.stream[self.bit_offset : self.bit_offset + bits]
         # bs = "".join([str(i) for i in bs])
         if not bs:
@@ -291,7 +297,6 @@ class BitStream:
         # print(f'SHIFT: {shift}')
         return out >> shift
 
-
     def read_limited_bits(self, min_value=0, max_value=1):
         required = bits_required(min_value, max_value)
         # print(f'Bits: {self.stream[self.bit_offset:self.bit_offset + required]}')
@@ -304,25 +309,14 @@ class BitStream:
         q = FloatQuantizer(min_value, max_value, resolution)
         return q.read(self)
 
+    def read_bytes_aligned(self, num_bytes):
+        self.align()
+        curr_byte = int(self.bit_offset / 8)
+        self.bit_offset += num_bytes * 8
+        return self.orig_stream[curr_byte:curr_byte + num_bytes]
+
     def read_bytes(self, num_bytes):
-
         return bytes([self.read_bits(8) for i in range(num_bytes)])
-
-        required = num_bytes * 8
-        remains = len(self.stream) - self.bit_offset
-        if required > remains:
-            self.log.error(f"Need: {required} Remains: {remains} Offset: {self.bit_offset}")
-            raise ParsingError(f"Need: {required} Remains: {remains} Offset: {self.bit_offset}")
-
-        if self.aligned:
-            assert self.bit_offset % 8 == 0
-            boff = int(self.bit_offset / 8)
-            # print(f'Get bytes: {num_bytes} BOFF: {boff} OFF: {boff + num_bytes}')
-            resp = self.orig_stream[boff : (boff + num_bytes)]
-            self.bit_offset += num_bytes * 8
-            return resp
-        else:
-            return bytes([self.read_bits(8) for i in range(num_bytes)])
 
     def read_u8(self):
         return self.read_bits(8)
@@ -359,6 +353,17 @@ class BitStream:
             # print(f'Append: {char} LEN: {num}')
             out.extend(char)
         return bytes(out).decode("utf-16-be")
+
+    def read_limited_string(self, char_min, char_max):
+        if self.read_bits():
+            return
+        self.align()
+        num = self.read_u32()
+        char_bits = bits_required(ord(char_min), ord(char_max))
+        out = []
+        for i in range(num):
+            out.append(self.read_bits(char_bits) + ord(char_min))
+        return out
 
     def reset(self):
         self.bit_offset = 0

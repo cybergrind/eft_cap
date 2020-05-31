@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from eft_cap import bprint, split, split_16le
-from eft_cap.bin_helpers import ByteStream, BitStream, FloatQuantizer
-from eft_cap.loot import read_many_polymorph, read_item, recurse_item
+from eft_cap.bin_helpers import ByteStream, BitStream, FloatQuantizer, stream_from_le
+from eft_cap.loot import read_many_polymorph, read_item, recurse_item, read_polymorph, \
+    recurse_delete, get_total_price
 from eft_cap.trig_helpers import norm_angle, angle, fwd_vector, dist, quaternion_to_euler
 
 if TYPE_CHECKING:
@@ -47,32 +48,154 @@ class Loot:
         self.skipped_updates = 0
         self.hard_skips = 0
         self.last_update = time.time()
+        self.all_items = {}
 
     def hide(self, id):
+        if id in self.hidden:
+            return
         item = self.by_id.pop(id)
         self.hidden[id] = item
         self.update_by_price()
         self.update_by_dist()
 
+    def unhide(self, id):
+        if id in self.by_id:
+            return
+        item = self.hidden.pop(id)
+        self.by_id[id] = item
+        self.update_by_price()
+        self.update_by_dist()
+
+    def recursive_add(self, item, nesting, ctx, **kwargs):
+        _id = item['id']
+        if len(_id) not in (24, 25):
+            print(f'WRONG ID: {_id} / LEN: {len(_id)}')
+            pprint(item)
+            exit(1)
+        if nesting == 0:
+            ctx['parent'] = item['id']
+            item['parent'] = None
+            if 'crate' in ctx:
+                item['crate'] = ctx['crate']
+        elif nesting > 0:
+            item['parent'] = ctx['parent']
+        if _id not in self.all_items:
+            self.all_items[_id] = item
+
+    def store_item(self, item, ctx={}):
+        recurse_item(item, self.recursive_add, ctx=ctx)
+
     def add_loot(self, msg, loot):
         if not loot:
             return
-        for item in loot:
-            total_price = item.get('total_price', 0)
-            if 'id' not in item:
-                if 'item' not in item:
+        for json_item in loot:
+            self.store_item(json_item['item'], {'crate': json_item})
+            total_price = json_item.get('total_price', 0)
+            if 'id' not in json_item:
+                if 'item' not in json_item:
                     continue
-                name = item['item']['name']
-                x = int(item['position'][0])
-                z = int(item['position'][2])
-                item['id'] = f'{name}_{x}_{z}'
-            if self.is_ignored(item):
-                self.hidden[item['id']] = item
+                name = json_item['item']['name']
+                x = int(json_item['position'][0])
+                z = int(json_item['position'][2])
+                json_item['id'] = f'{name}_{x}_{z}'
+            if self.is_ignored(json_item):
+                self.hidden[json_item['id']] = json_item
             elif total_price < self.PRICE_TRESHOLD:
-                self.hidden[item['id']] = item
+                self.hidden[json_item['id']] = json_item
             else:
-                self.by_id[item['id']] = item
+                self.by_id[json_item['id']] = json_item
         self.update_by_price()
+
+    def get_pid_in_grid(self, item, location):
+        pprint(location)
+        pprint(item)
+        for grid in item['grid']:
+            for grid_item in grid['items']:
+                gl = grid_item['location']
+                if gl['x'] == location['x'] and gl['y'] == location['y']:
+                    print(grid_item)
+                    return grid_item['item']['id']
+                print(f'GLX: {gl["x"]} GLY: {gl["y"]} VS X: {location["x"]} Y: {location["y"]}')
+        raise NotImplementedError
+
+    def get_source_id(self, _from, container=False):
+        if 'container' in _from:
+            parent_pid = _from['container']['parent_id']
+            if container:
+                return parent_pid
+
+            parent = self.all_items[parent_pid]
+            # pprint(_from)
+            # pprint(parent)
+
+            location = _from['location_in_grid']
+            _from_pid = self.get_pid_in_grid(parent, location)
+
+        elif 'owner_container' in _from:
+            _from_pid = _from['owner_container']['parent_id']
+        else:
+            pprint(_from)
+            exit(131)
+        return _from_pid
+
+    def grid_add(self, item, container, location):
+        for grid in container['grid']:
+            grid['items'].append({'item': item, 'location': location})
+            return
+
+    def process_move(self, move_operation):
+        _from = move_operation['from']
+        _to = move_operation['to']
+        if 'stub' in _from or 'stub' in _to:
+            return
+        print(f'Move {_from} => {_to}')
+        _from_pid = self.get_source_id(_from)
+        _to_pid = self.get_source_id(_to, container=True)
+
+        from_item = self.all_items[_from_pid]
+        from_parent_key = from_item['parent']
+        if isinstance(from_parent_key, str):
+            from_parent = self.all_items[from_item['parent']]
+        else:
+            from_parent = from_item
+
+        to_item = self.all_items[_to_pid]
+        to_parent_key = to_item['parent']
+        if isinstance(to_parent_key, str):
+            to_parent = self.all_items[to_item['parent']]
+        else:
+            to_parent = to_item
+
+        print(f'Move {_from} => {_to}')
+        print('FROM:')
+        pprint(from_item)
+        print('from parent')
+        pprint(from_parent)
+        print('TO:')
+        pprint(to_item)
+        print('to parent')
+        pprint(to_parent)
+        old_price = get_total_price(from_parent)
+        recurse_delete(from_parent, from_item['id'])
+        self.grid_add(from_item, to_item, _to['location_in_grid'])
+
+
+        for src in [from_parent, to_parent]:
+            if 'player' in src:
+                src['player'].update_loot_price()
+            elif 'crate' in src:
+                new_price = get_total_price(from_parent)
+                src['crate']['total_price'] = new_price
+                if new_price < self.PRICE_TRESHOLD:
+                    self.hide(src['crate']['id'])
+                else:
+                    self.unhide(src['crate']['id'])
+                print(f'OLD: {old_price} => {new_price}')
+        # if price_updated:
+        #     self.update_by_price()
+        # exit(10)
+        # pprint(to_item)
+        pprint(to_item)
 
     def update_by_price(self):
         self.by_price = sorted(self.by_id.values(), key=lambda x: -x.get('total_price', 0))
@@ -115,8 +238,8 @@ class Loot:
 
     PRICE_TRESHOLD = 20000
 
-    # IGNORE = ['quest_']
-    IGNORE = []
+    IGNORE = ['quest_']
+    # IGNORE = []
 
     def is_ignored(self, item):
         name = item.get('name', 'NO NAME')
@@ -128,15 +251,15 @@ class Loot:
         out = []
         # remove quest_
         for item in items:
+            if self.is_ignored(item):
+                continue
             out.append(item)
             if len(out) >= num:
                 break
         return out
 
-
     def update_by_dist(self):
         self.by_dist = sorted(self.by_id.values(), key=lambda x: x['dist'])
-
 
     def item_to_row(self, item):
         name = item.get('name', 'NO NAME')
@@ -287,13 +410,15 @@ class Player(ParsingMethods):
         self.pos = self.read_pos()
         self.rot = quaternion_to_euler(**self.read_rot())
         in_prone = self.data.read_u8() == 1
-        pose_lvl = self.data.read_f32()
+        self.pose = self.data.read_f32()
 
         inv_bin = self.read_size_and_bytes()
         try:
             top_ctx = {'total_price': 0}
             ctx = {'top': top_ctx}
             self.inventory = read_item(ByteStream(inv_bin), ctx=ctx)
+            self.inventory['player'] = self
+            GLOBAL['loot'].store_item(self.inventory, {'player': self})
         except:
             self.log.exception('During decode')
             if self.msg.transport.replay:
@@ -325,7 +450,7 @@ class Player(ParsingMethods):
         self.is_npc = self.is_scav and self.prof.get('aid') == '0'
         side = info.get("Side")
         self.side = "SCAV" if side == "Savage" else side
-        self.log.info(f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {pose_lvl}")
+        self.log.info(f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {self.pose}")
 
     def update_price_class(self):
         if self.loot_price < 10000:
@@ -447,6 +572,8 @@ class Player(ParsingMethods):
         else:
             self.update_position()
             self.update_rotation()
+            self.skip_misc()
+            self.update_loot()
 
     def update_me(self, msg: MsgDecoder, data: BitStream):
         self.msg = msg
@@ -469,7 +596,119 @@ class Player(ParsingMethods):
             # self.data.bit_offset -= 3
             if self.update_position():
                 self.update_rotation()
-                GLOBAL['loot'].update_location()
+                self.skip_misc()
+                self.update_loot()
+                # GLOBAL['loot'].update_location()   # TODO: delme
+
+    def skip_misc(self):
+
+        d: BitStream = self.data
+        # print(f'IS ALIGNED: {d.aligned}')
+        d.read_bits()  # sync pos applied
+
+        if d.read_bits():
+            d.read_u8()  # command mask
+
+        if d.read_bits():
+            d.read_limited_bits(0, 31)  # eplayer state
+
+        if d.read_bits():
+            d.read_limited_bits(0, 63)  # animator state index
+
+        if d.read_bits():  # movement direction
+            d.read_limited_float(-1, 1, 0.03125)
+            d.read_limited_float(-1, 1, 0.03125)
+
+        if d.read_bits():  # pose level
+            self.pose = d.read_limited_float(0, 1, 0.0078125)
+
+        if d.read_bits():  # move speed
+            d.read_limited_float(0, 1, 0.0078125)
+
+        if d.read_bits():  # tilt
+            d.read_limited_float(-5, 5, 0.0078125)
+
+        if d.read_bits():
+            if not d.read_bits():
+                d.read_bits()
+
+        d.read_limited_bits(-1, 1)  # blind fire
+        d.read_bits()  # soft surface
+
+        if not d.read_bits():  # head rotation
+            d.read_limited_float(-50, 50, 0.0625)
+            d.read_limited_float(-50, 50, 0.0625)
+
+        d.read_bits(3)  # no stamina, no oxy, no hands stamina
+        if d.read_bits():
+            if d.read_bits():  # door
+                if d.read_bits():
+                    _type = d.read_limited_bits(0, 4)
+                    d.read_string(1350)
+                    d.read_limited_bits(0, 2)
+                    if _type == 2:
+                        d.read_limited_string(' ', 'z')
+
+            if d.read_bits():  # loot interaction
+                if d.read_bits():
+                    loot_id = d.read_string(1350)
+                    callback_id = d.read_u32()
+
+            if d.read_bits():  # stationary weapon
+                if d.read_bits():
+                    _type = d.read_u8()
+                    if _type == 0:
+                        d.read_string()
+            if d.read_bits():  # plant item
+                if d.read_bits():
+                    d.read_string()
+                    d.read_string()
+
+        if not d.read_bits():
+            optype = d.read_limited_bits(0, 10)
+            d.read_limited_string(' ', 'z')
+            d.read_limited_bits(0, 2047)
+            if optype == 6:
+                d.read_limited_bits(0, 7)
+                d.read_f32()
+            d.read_limited_bits(-1, 3)
+
+    def read_one_loot(self):
+        d: BitStream = self.data
+        if d.read_bits():
+            size = d.read_bits(16)
+            odata = data = d.read_bytes_aligned(size)
+            cb = d.read_limited_bits(0, 2047)
+            hash = d.read_u32()
+            data = ByteStream(data)
+
+            poly = read_polymorph(data, {})
+            if poly and 'move_operation_id' in poly:
+                try:
+                    GLOBAL['loot'].process_move(poly)
+                except:
+                    self.log.exception('Process move')
+                    exit(133) # TODO: delme
+
+    def update_loot(self):
+        d: BitStream = self.data
+        num = d.read_u8()
+        for i in range(num):
+            if not self.msg.incoming:
+                self.read_one_loot()
+                continue
+            tag = d.read_u8()
+            if tag == 1:  # command
+                self.read_one_loot()
+                continue
+            _id = d.read_bits(16)
+            status = d.read_limited_bits(0, 3)
+            if status == 2:
+                d.read_limited_string(' ', 'z')
+            if d.read_bits():
+                d.read_u32()
+                d.read_bits()
+
 
     exit = math.inf
 
@@ -525,7 +764,7 @@ class Player(ParsingMethods):
         if self.data.read_bits(1):
             qx = FloatQuantizer(0.0, 360.0, 0.015625)
             qy = FloatQuantizer(-90.0, 90.0, 0.015625)
-            before = copy.copy(self.rot)
+            #        before = copy.copy(self.rot)
             self.rot[0] = min(360.0, qx.read(self.data))
             self.rot[1] = qy.read(self.data)
             # if self.me:
@@ -647,6 +886,7 @@ class MsgDecoder(ParsingMethods):
         GLOBAL['me'].update_me(self, up_data)
 
     def update_world(self, up_data: BitStream):
+        return
         up_data.read_bits(4)  # skip
         if up_data.read_bits(1):  # loot sync
             num = up_data.read_limited_bits(1, 64)
@@ -665,4 +905,4 @@ class MsgDecoder(ParsingMethods):
         finally:
             d = time.time() - t
             if d > 1:
-                self.log.warning(f'Heavy msg: {d:.3}')
+                self.log.warning(f'Heavy msg: {d:.3} {self}')

@@ -151,9 +151,10 @@ class NetworkTransport:
                     self.trust_session(sess_id)
                 return
             elif op == Z_INIT:
-                sess_id, = struct.unpack(('<H', stream[5:7]))
-                self.trust_session(sess_id)
-                self.new_session()
+                if len(stream) >= 7:
+                    sess_id, = struct.unpack('<H', stream[5:7])
+                    self.trust_session(sess_id)
+                    self.new_session()
                 return
         else:
             ctx = {'pck_len': len(packet['data']), 'incoming': packet['incoming']}
@@ -257,7 +258,7 @@ class NetworkTransport:
                             self.log.warning(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
                             self.log.warning(chunks[frag_idx])
                             self.log.warning(fragm_stream)
-                            if self.replay:
+                            if self.replay and False:
                                 print('Exit 199')
                                 exit(199)
 

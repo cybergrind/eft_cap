@@ -84,6 +84,7 @@ class App(tk.Tk):
                     dead_players.append(row)
             players = sorted(players, key=lambda x: x[0])
             dead_players = sorted(dead_players, key=lambda x: x[0])[:4]
+            GLOBAL['loot'].update_location()
             loot = GLOBAL['loot'].display_loot()
 
             self.draw_table(
