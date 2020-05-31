@@ -104,7 +104,7 @@ def get_total_price(item):
         nonlocal _my_total_price
         if nesting == 1 and ctx.get('slot', {}).get('id', None) in SKIP:
             return True  # skip
-        _my_total_price += item['info'].get('price', 0) * item['stack_count']
+        _my_total_price += int(item['info'].get('price', 0) * item['stack_count'])
 
     recurse_item(item, tot)
     return _my_total_price
@@ -160,7 +160,7 @@ def read_item(d: ByteStream, ctx):
     out['info'] = get_description(out['template_id'])
     out['name'] = out['info']['name']
     if 'top' in ctx and out['info'] and 'price' in out['info']:
-        ctx['top']['total_price'] += out['info']['price'] * out['stack_count']
+        ctx['top']['total_price'] += int(out['info']['price'] * out['stack_count'])
 
     num_components = d.read_u32()
     for i in range(num_components):
@@ -314,7 +314,7 @@ def read_fast_access(d: ByteStream, ctx: dict):
     for i in range(num_indexes):
         idx = d.read_u32()
         item_id = d.read_string()
-        assert len(item_id) == 0x18
+        # assert len(item_id) == 0x18
         out['fast_items'][idx] = item_id
     return out
 
@@ -566,8 +566,8 @@ def read_polymorph(d: ByteStream, ctx, reraise=False):
     except Exception as e:
         if 'many_polymorph' in d.named_positions:
             d.dump_to('json_corpse.bin', 'many_polymorph')
-        print(f'_TYPE: {_type}')
-        log.exception('During parsing')
-        print('exit 79')
+        # print(f'_TYPE: {_type}')
+        # log.exception('During parsing')
+        # print('exit 79')
         if reraise:
             raise

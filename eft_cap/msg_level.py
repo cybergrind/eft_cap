@@ -7,6 +7,7 @@ import math
 import time
 import zlib
 from pprint import pprint
+import random
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -74,10 +75,10 @@ class Loot:
 
     def recursive_add(self, item, nesting, ctx, **kwargs):
         _id = item['id']
-        if len(_id) not in (24, 25):
+        if len(_id) not in (24, 25, 26, 27):
             print(f'WRONG ID: {_id} / LEN: {len(_id)}')
             pprint(item)
-            exit(1)
+            # exit(1)
         if nesting == 0:
             ctx['parent'] = item['id']
             item['parent'] = None
@@ -113,15 +114,15 @@ class Loot:
         self.update_by_price()
 
     def get_pid_in_grid(self, item, location):
-        pprint(location)
-        pprint(item)
+        # pprint(location)
+        # pprint(item)
         for grid in item['grid']:
             for grid_item in grid['items']:
                 gl = grid_item['location']
                 if gl['x'] == location['x'] and gl['y'] == location['y']:
-                    print(grid_item)
+                    # print(grid_item)
                     return grid_item['item']['id']
-                print(f'GLX: {gl["x"]} GLY: {gl["y"]} VS X: {location["x"]} Y: {location["y"]}')
+                # print(f'GLX: {gl["x"]} GLY: {gl["y"]} VS X: {location["x"]} Y: {location["y"]}')
         raise NotImplementedError
 
     def get_source_id(self, _from, container=False):
@@ -141,7 +142,7 @@ class Loot:
             _from_pid = _from['owner_container']['parent_id']
         else:
             pprint(_from)
-            exit(131)
+            # exit(131)
         return _from_pid
 
     def grid_add(self, item, container, location):
@@ -154,7 +155,7 @@ class Loot:
         _to = move_operation['to']
         if 'stub' in _from or 'stub' in _to:
             return
-        print(f'Move {_from} => {_to}')
+        # print(f'Move {_from} => {_to}')
         _from_pid = self.get_source_id(_from)
         _to_pid = self.get_source_id(_to, container=True)
 
@@ -172,15 +173,15 @@ class Loot:
         else:
             to_parent = to_item
 
-        print(f'Move {_from} => {_to}')
-        print('FROM:')
-        pprint(from_item)
-        print('from parent')
-        pprint(from_parent)
-        print('TO:')
-        pprint(to_item)
-        print('to parent')
-        pprint(to_parent)
+        # print(f'Move {_from} => {_to}')
+        # print('FROM:')
+        # pprint(from_item)
+        # print('from parent')
+        # pprint(from_parent)
+        # print('TO:')
+        # pprint(to_item)
+        # print('to parent')
+        # pprint(to_parent)
         old_price = get_total_price(from_parent)
         recurse_delete(from_parent, from_item['id'])
         self.grid_add(from_item, to_item, _to['location_in_grid'])
@@ -195,12 +196,11 @@ class Loot:
                     self.hide(src['crate']['id'])
                 else:
                     self.unhide(src['crate']['id'])
-                print(f'OLD: {old_price} => {new_price}')
-        # if price_updated:
-        #     self.update_by_price()
+                # print(f'OLD: {old_price} => {new_price}')
+
         # exit(10)
         # pprint(to_item)
-        pprint(to_item)
+        # pprint(to_item)
 
     def update_by_price(self):
         self.by_price = sorted(self.by_id.values(), key=lambda x: -x.get('total_price', 0))
@@ -307,7 +307,7 @@ GLOBAL = {
     'map': None,
     'me': None,
     'loot': Loot(),
-    'get_qsize': lambda: 0,
+    'get_qsize': lambda: random.randint(1, 100),
 }
 PLAYERS = {}
 
@@ -530,6 +530,8 @@ class Player(ParsingMethods):
         me = GLOBAL['me']
         if not me:
             return 0
+        if self.me:
+            return GLOBAL['get_qsize']()
         return round(self.pos[1] - me.pos[1], 1)
 
     def print(self, msg, *args, **kwargs):
@@ -585,9 +587,10 @@ class Player(ParsingMethods):
             try:
                 self.update_loot()
             except:
-                self.log.exception(f'When update loot: incoming={self.msg.incoming}')
-                ByteStream(self.msg.curr_packet['data']).dump_to('to_test.bin')
-                exit(134)  # TODO: delme
+                # self.log.exception(f'When update loot: incoming={self.msg.incoming}')
+                # ByteStream(self.msg.curr_packet['data']).dump_to('to_test.bin')
+                # exit(134)  # TODO: delme
+                pass
 
     def update_me(self, msg: MsgDecoder, data: BitStream):
         self.msg = msg
@@ -624,10 +627,10 @@ class Player(ParsingMethods):
             d.read_u8()  # command mask
 
         if d.read_bits():
-            d.read_limited_bits(0, 31)  # eplayer state
+            eplayer = d.read_limited_bits(0, 31)  # eplayer state
 
         if d.read_bits():
-            d.read_limited_bits(0, 63)  # animator state index
+            animator = d.read_limited_bits(0, 63)  # animator state index
 
         if d.read_bits():  # movement direction
             d.read_limited_float(-1, 1, 0.03125)
@@ -645,11 +648,11 @@ class Player(ParsingMethods):
             # self.tilt = d.read_bits(7)
 
         if d.read_bits():
-            if not d.read_bits():
+            if not d.read_bits():  # movements step
                 d.read_bits()
 
-        d.read_limited_bits(-1, 1)  # blind fire
-        d.read_bits()  # soft surface
+        blind_fire = d.read_limited_bits(-1, 1)  # blind fire
+        soft_surface = d.read_bits()  # soft surface
 
         if not d.read_bits():  # head rotation
             d.read_limited_float(-50, 50, 0.0625)
@@ -708,17 +711,16 @@ class Player(ParsingMethods):
                     GLOBAL['loot'].process_move(poly)
                 except:
                     self.log.exception('Process move')
-                    exit(133)  # TODO: delme
+                    # exit(133)  # TODO: delme
 
     def update_loot(self):
         self.log.info(
             f'Loot position: {self.data.bit_offset} / {self.data.bit_offset / 8}'
         )  # TODO: delme
-        self.data.align()
-        self.data.print_rest()
+        # self.data.align()
+        # self.data.print_rest()
         d: BitStream = self.data
         num = d.read_u8()
-        print(f'NUM OF u8: {num}')
         for i in range(num):
             if not self.msg.incoming:
                 self.read_one_loot()
@@ -790,8 +792,10 @@ class Player(ParsingMethods):
             qx = FloatQuantizer(0.0, 360.0, 0.015625)
             qy = FloatQuantizer(-90.0, 90.0, 0.015625)
             #        before = copy.copy(self.rot)
-            self.rot[0] = min(360.0, qx.read(self.data))
-            self.rot[1] = qy.read(self.data)
+            x = qx.read(self.data)
+            y = qy.read(self.data)
+            self.rot[0] = min(360.0, x)
+            self.rot[1] = y
             # if self.me:
             #     print(f'Rotated: {self.fwd_vector}')
 

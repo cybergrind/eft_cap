@@ -39,9 +39,9 @@ class ByteStream:
         out = self.orig_stream[self.byte_offset : self.byte_offset + num]
 
         if len(out) != num:
-            self.log.error(
-                f"OS: {self.orig_stream[:10]} OFST: {self.byte_offset} NUM: {num} L: {len(self.orig_stream)}"
-            )
+            # self.log.error(
+            #     f"OS: {self.orig_stream[:10]} OFST: {self.byte_offset} NUM: {num} L: {len(self.orig_stream)}"
+            # )
             raise ParsingError(f'OS: {out[:20]} OFST: {self.byte_offset} NUM: {num} L: {len(self.orig_stream)}')
         self.byte_offset += num
         assert len(out) == num
@@ -331,30 +331,31 @@ class BitStream:
         return self.orig_stream[curr_byte:curr_byte + num_bytes]
 
     def read_bytes(self, num_bytes):
+        self.align()
         return bytes([self.read_bits(8) for i in range(num_bytes)])
 
     def read_u8(self):
         return self.read_bits(8)
 
-    @packed(">H")
+    # @packed(">H")
     def read_u16(self):
-        return self.read_bytes(2)
+        return self.read_bits(16)
 
-    @packed(">I")
+    # @packed(">I")
     def read_u32(self):
-        return self.read_bytes(4)
+        return self.read_bits(32)
 
-    @packed(">Q")
+    # @packed(">Q")
     def read_u64(self):
-        return self.read_bytes(8)
+        return self.read_bits(32) << 32 + self.read_bits(32)
 
     @property
     def aligned(self):
         return self.bit_offset % 8 == 0
 
-    @packed(">f")
+    # @packed(">f")
     def read_f32(self):
-        return self.read_bytes(4)
+        return struct.unpack('>f', struct.pack('>I', self.read_bits(32)))
 
     def read_string(self, max_size=0):
         is_null = self.read_bits(1)
@@ -374,12 +375,11 @@ class BitStream:
             return
         self.align()
         num = self.read_u32()
-        assert num < 4096
+        assert num < 8096, f'Want: {num} chars'
         char_bits = bits_required(ord(char_min), ord(char_max))
         out = []
         for i in range(num):
             char = self.read_bits(char_bits) + ord(char_min)
-            print(f'CHAR: {chr(char)}')
             out.append(char)
         return out
 
