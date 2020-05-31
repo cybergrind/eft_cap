@@ -1,4 +1,4 @@
-from eft_cap.bin_helpers import stream_from_le, BitStream
+from eft_cap.bin_helpers import stream_from_le, BitStream, FloatQuantizer
 
 
 def test_01():
@@ -80,3 +80,14 @@ def test_08_vars():
     s.reset()
     assert s.read_bits(13) == 0x33b
     assert s.read_bits(32) == 0x78ae22ef
+
+
+def test_09_required():
+    q = FloatQuantizer(0.0, 1.0, resolution=0.03125)
+    assert q.bits_require == 6
+    q = FloatQuantizer(0.0, 1.0, resolution=0.0078125)
+    assert q.bits_require == 8
+    q = FloatQuantizer(-5.0, 5.0, resolution=0.0078125)
+    assert q.bits_require == 11
+    q = FloatQuantizer(-50.0, 50.0, resolution=0.0625)
+    assert q.bits_require == 11

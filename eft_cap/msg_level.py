@@ -12,10 +12,16 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from eft_cap import bprint, split, split_16le
-from eft_cap.bin_helpers import ByteStream, BitStream, FloatQuantizer, stream_from_le
-from eft_cap.loot import read_many_polymorph, read_item, recurse_item, read_polymorph, \
-    recurse_delete, get_total_price
-from eft_cap.trig_helpers import norm_angle, angle, fwd_vector, dist, quaternion_to_euler
+from eft_cap.bin_helpers import BitStream, ByteStream, FloatQuantizer, stream_from_le
+from eft_cap.loot import (
+    get_total_price,
+    read_item,
+    read_many_polymorph,
+    read_polymorph,
+    recurse_delete,
+    recurse_item,
+)
+from eft_cap.trig_helpers import angle, dist, fwd_vector, norm_angle, quaternion_to_euler
 
 if TYPE_CHECKING:
     from eft_cap.network_base import NetworkTransport
@@ -179,7 +185,6 @@ class Loot:
         recurse_delete(from_parent, from_item['id'])
         self.grid_add(from_item, to_item, _to['location_in_grid'])
 
-
         for src in [from_parent, to_parent]:
             if 'player' in src:
                 src['player'].update_loot_price()
@@ -266,10 +271,12 @@ class Loot:
         # if name == 'quest_sas_san1':
         #     pprint(item)
         return [
-            item.get('dist', '-'), item.get('vdist', '-'),
+            item.get('dist', '-'),
+            item.get('vdist', '-'),
             item.get('angle', '-'),
             f'{name}',
-            f'Price: {item.get("total_price", "unk")}', {'text': 'disable', 'callback': lambda x: self.hide(item['id'])}
+            f'Price: {item.get("total_price", "unk")}',
+            {'text': 'disable', 'callback': lambda x: self.hide(item['id'])},
         ]
 
     def display_rows(self):
@@ -300,7 +307,7 @@ GLOBAL = {
     'map': None,
     'me': None,
     'loot': Loot(),
-    'get_qsize': lambda : 0,
+    'get_qsize': lambda: 0,
 }
 PLAYERS = {}
 
@@ -450,7 +457,9 @@ class Player(ParsingMethods):
         self.is_npc = self.is_scav and self.prof.get('aid') == '0'
         side = info.get("Side")
         self.side = "SCAV" if side == "Savage" else side
-        self.log.info(f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {self.pose}")
+        self.log.info(
+            f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {self.pose}"
+        )
 
     def update_price_class(self):
         if self.loot_price < 10000:
@@ -578,7 +587,7 @@ class Player(ParsingMethods):
             except:
                 self.log.exception(f'When update loot: incoming={self.msg.incoming}')
                 ByteStream(self.msg.curr_packet['data']).dump_to('to_test.bin')
-                exit(134)   # TODO: delme
+                exit(134)  # TODO: delme
 
     def update_me(self, msg: MsgDecoder, data: BitStream):
         self.msg = msg
@@ -607,7 +616,7 @@ class Player(ParsingMethods):
 
     def skip_misc(self):
         d: BitStream = self.data
-        start_bit = d.bit_offset   # TODO: delme
+        start_bit = d.bit_offset  # TODO: delme
         # print(f'IS ALIGNED: {d.aligned}')
         d.read_bits()  # sync pos applied
 
@@ -646,7 +655,10 @@ class Player(ParsingMethods):
             d.read_limited_float(-50, 50, 0.0625)
             d.read_limited_float(-50, 50, 0.0625)
 
-        d.read_bits(3)  # no stamina, no oxy, no hands stamina
+        d.read_bits()  # no stamina, no oxy, no hands stamina
+        d.read_bits()
+        d.read_bits()
+
         if d.read_bits():
             if d.read_bits():  # door
                 if d.read_bits():
@@ -679,7 +691,7 @@ class Player(ParsingMethods):
                 d.read_limited_bits(0, 7)
                 d.read_f32()
             d.read_limited_bits(-1, 3)
-        self.log.info(f'SKIP BITS FROM {start_bit} to {d.bit_offset}')    # TODO: delme
+        self.log.info(f'SKIP BITS FROM {start_bit} to {d.bit_offset}')  # TODO: delme
 
     def read_one_loot(self):
         d: BitStream = self.data
@@ -696,10 +708,12 @@ class Player(ParsingMethods):
                     GLOBAL['loot'].process_move(poly)
                 except:
                     self.log.exception('Process move')
-                    exit(133) # TODO: delme
+                    exit(133)  # TODO: delme
 
     def update_loot(self):
-        self.log.info(f'Loot position: {self.data.bit_offset} / {self.data.bit_offset / 8}')  # TODO: delme
+        self.log.info(
+            f'Loot position: {self.data.bit_offset} / {self.data.bit_offset / 8}'
+        )  # TODO: delme
         self.data.align()
         self.data.print_rest()
         d: BitStream = self.data
@@ -772,7 +786,7 @@ class Player(ParsingMethods):
         return True
 
     def update_rotation(self):
-        if self.data.read_bits(1):
+        if self.data.read_bits():
             qx = FloatQuantizer(0.0, 360.0, 0.015625)
             qy = FloatQuantizer(-90.0, 90.0, 0.015625)
             #        before = copy.copy(self.rot)
@@ -876,13 +890,14 @@ class MsgDecoder(ParsingMethods):
         out = read_many_polymorph(d)
         GLOBAL['loot'].add_loot(self, out)
 
-
     def update_player(self, up_data: BitStream):
         # get by `channel_id` or `channel_id - 1`
-        player = PLAYERS.get(self.channel_id, PLAYERS.get(self.channel_id - 1, None))  # type: Player
+        player = PLAYERS.get(
+            self.channel_id, PLAYERS.get(self.channel_id - 1, None)
+        )  # type: Player
 
         # player = PLAYERS.get(self.channel_id, None)  # type: Player
-        if not player: # and self.channel_id % 2 == 1:
+        if not player:  # and self.channel_id % 2 == 1:
             player = Player.dummy(self.channel_id)
 
         self.log.debug(f"Update player: {player}")

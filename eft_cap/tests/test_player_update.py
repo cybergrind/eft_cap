@@ -38,9 +38,9 @@ async def test_01(packet_01):
 
 
 def test_02():
-    payload = b'\x1c\x00\x87\xce\x98\x80\xc3\xbc\xfbE\x93\x7f\x8a\x88G\x84.\x9c3\xc4\xcd\xea\xa1\x90\n\x10\x00\x00\x00\x00'
+    payload = b'\x1c\x00\x87\xce\x98\x80\xc3\xbc\xfbE\x93\x7f\x8a\x88G\x84.\x9c\x33\xc4\xcd\xea\xa1\x90\0x0a\x10\x00\x00\x00\x00'
     trans = NetworkTransport(packet_01, FakeArgs())
-    trans.curr_packet = {'data': payload, 'incoming': True}
+    trans.curr_packet = {'data': payload, 'incoming': True, 'num': 0, 'len': len(payload)}
     m = MsgDecoder(trans, {'incoming': True, 'channel_id': 7})
     m.content = payload
     m.op_type = 170
