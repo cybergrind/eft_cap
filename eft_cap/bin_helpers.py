@@ -212,6 +212,7 @@ def stream_from_le(stream, step=4):
 
 class BitStream:
     log = logging.getLogger("BitStream")
+    DEBUG = False
 
     def __init__(self, stream, reverse=True):
         self.bit_offset = 0
@@ -224,6 +225,7 @@ class BitStream:
         # self.stream = array("B", bitstring)
         self.length_limit = len(stream) * 8
         self.stream = bitarray(self.stream_be, endian='big')
+        self.next_bytes = None
         # print(f'Stream: {stream}')
         # b = bitarray(endian='little')
         # self.stream = b.frombytes(bytes(stream))
@@ -238,6 +240,8 @@ class BitStream:
         bit = self.bit_offset
         bprint(self.rest)
         self.bit_offset = bit
+        if self.DEBUG:
+            self.next_bytes = self.stream[self.bit_offset:]
 
     def align(self):
         off = self.bit_offset % 8
@@ -262,12 +266,21 @@ class BitStream:
 
     def read_bits(self, bits=1):
         if self.bit_offset + bits > self.length_limit:
+
             raise ParsingError(f'Overflow: need {bits} have: {self.length_limit - self.bit_offset} L: {self.length_limit}')
+        if bits == 1:
+            bit = self.stream[self.bit_offset]
+            self.bit_offset += bits
+            if self.DEBUG:
+                self.next_bytes = self.stream[self.bit_offset:]
+            return bit
         bs = self.stream[self.bit_offset : self.bit_offset + bits]
         # bs = "".join([str(i) for i in bs])
         if not bs:
             return 0
         self.bit_offset += bits
+        if self.DEBUG:
+            self.next_bytes = self.stream[self.bit_offset:]
 
         out = 0
         bs = bs.tobytes()
@@ -313,6 +326,8 @@ class BitStream:
         self.align()
         curr_byte = int(self.bit_offset / 8)
         self.bit_offset += num_bytes * 8
+        if self.DEBUG:
+            self.next_bytes = self.stream[self.bit_offset:]
         return self.orig_stream[curr_byte:curr_byte + num_bytes]
 
     def read_bytes(self, num_bytes):
@@ -359,10 +374,13 @@ class BitStream:
             return
         self.align()
         num = self.read_u32()
+        assert num < 4096
         char_bits = bits_required(ord(char_min), ord(char_max))
         out = []
         for i in range(num):
-            out.append(self.read_bits(char_bits) + ord(char_min))
+            char = self.read_bits(char_bits) + ord(char_min)
+            print(f'CHAR: {chr(char)}')
+            out.append(char)
         return out
 
     def reset(self):

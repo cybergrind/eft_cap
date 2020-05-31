@@ -164,7 +164,7 @@ def read_item(d: ByteStream, ctx):
 
     num_components = d.read_u32()
     for i in range(num_components):
-        components.append(read_polymorph(d, ctx))
+        components.append(read_polymorph(d, ctx, reraise=True))
 
     num_slots = d.read_u32()
     for i in range(num_slots):
@@ -418,8 +418,8 @@ def json_corpse(d: ByteStream, ctx: dict):
 def read_move(d: ByteStream, ctx: dict):
     return {
         'id': d.read_string(),
-        'from': read_polymorph(d, ctx),
-        'to': read_polymorph(d, ctx),
+        'from': read_polymorph(d, ctx, reraise=True),
+        'to': read_polymorph(d, ctx, reraise=True),
         'move_operation_id': d.read_u16(),
     }
 
@@ -504,7 +504,7 @@ TYPES = {
     2: read_vector3,
     4: read_weighted_loot_spawn,
     5: read_eft_inv_desc,
-    # 6: read_fast_access,
+    6: read_fast_access,
     7: read_slot_desc,
     8: read_item_in_grid,
     9: read_grid,
@@ -552,7 +552,7 @@ def read_many_polymorph(d: ByteStream, ctx={}):
     return out
 
 
-def read_polymorph(d: ByteStream, ctx):
+def read_polymorph(d: ByteStream, ctx, reraise=False):
     d.store_pos('polymorph', auto=True)
     _type = d.read_u8()
 
@@ -569,3 +569,5 @@ def read_polymorph(d: ByteStream, ctx):
         print(f'_TYPE: {_type}')
         log.exception('During parsing')
         print('exit 79')
+        if reraise:
+            raise

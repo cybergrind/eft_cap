@@ -6,3 +6,5 @@ pydivert==2.1.0
 bitarray==1.2.2
 
 black[d]==19.10b0
+fan_tools==2.6.2
+pytest-asyncio

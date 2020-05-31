@@ -259,7 +259,7 @@ class Loot:
         return out
 
     def update_by_dist(self):
-        self.by_dist = sorted(self.by_id.values(), key=lambda x: x['dist'])
+        self.by_dist = sorted(self.by_id.values(), key=lambda x: x.get('dist', 1000.0))
 
     def item_to_row(self, item):
         name = item.get('name', 'NO NAME')
@@ -573,7 +573,12 @@ class Player(ParsingMethods):
             self.update_position()
             self.update_rotation()
             self.skip_misc()
-            self.update_loot()
+            try:
+                self.update_loot()
+            except:
+                self.log.exception(f'When update loot: incoming={self.msg.incoming}')
+                ByteStream(self.msg.curr_packet['data']).dump_to('to_test.bin')
+                exit(134)   # TODO: delme
 
     def update_me(self, msg: MsgDecoder, data: BitStream):
         self.msg = msg
@@ -601,8 +606,8 @@ class Player(ParsingMethods):
                 # GLOBAL['loot'].update_location()   # TODO: delme
 
     def skip_misc(self):
-
         d: BitStream = self.data
+        start_bit = d.bit_offset   # TODO: delme
         # print(f'IS ALIGNED: {d.aligned}')
         d.read_bits()  # sync pos applied
 
@@ -620,13 +625,15 @@ class Player(ParsingMethods):
             d.read_limited_float(-1, 1, 0.03125)
 
         if d.read_bits():  # pose level
-            self.pose = d.read_limited_float(0, 1, 0.0078125)
+            self.pose = d.read_limited_float(0.0, 1.0, 0.0078125)
+            # self.pose = d.read_bits(7) # TODO: delme
 
         if d.read_bits():  # move speed
             d.read_limited_float(0, 1, 0.0078125)
 
         if d.read_bits():  # tilt
-            d.read_limited_float(-5, 5, 0.0078125)
+            self.tilt = d.read_limited_float(-5, 5, 0.0078125)
+            # self.tilt = d.read_bits(7)
 
         if d.read_bits():
             if not d.read_bits():
@@ -672,6 +679,7 @@ class Player(ParsingMethods):
                 d.read_limited_bits(0, 7)
                 d.read_f32()
             d.read_limited_bits(-1, 3)
+        self.log.info(f'SKIP BITS FROM {start_bit} to {d.bit_offset}')    # TODO: delme
 
     def read_one_loot(self):
         d: BitStream = self.data
@@ -682,7 +690,7 @@ class Player(ParsingMethods):
             hash = d.read_u32()
             data = ByteStream(data)
 
-            poly = read_polymorph(data, {})
+            poly = read_polymorph(data, {}, reraise=True)
             if poly and 'move_operation_id' in poly:
                 try:
                     GLOBAL['loot'].process_move(poly)
@@ -691,8 +699,12 @@ class Player(ParsingMethods):
                     exit(133) # TODO: delme
 
     def update_loot(self):
+        self.log.info(f'Loot position: {self.data.bit_offset} / {self.data.bit_offset / 8}')  # TODO: delme
+        self.data.align()
+        self.data.print_rest()
         d: BitStream = self.data
         num = d.read_u8()
+        print(f'NUM OF u8: {num}')
         for i in range(num):
             if not self.msg.incoming:
                 self.read_one_loot()
@@ -709,15 +721,14 @@ class Player(ParsingMethods):
                 d.read_u32()
                 d.read_bits()
 
-
     exit = math.inf
 
     def update_position(self, check=True):
         assert self.is_alive
         last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
-        self.log.debug(f"Update {self} Read: {read} ME: {self.me}")
         if read:
+            # self.log.debug(f"Update position {self} Read: {read} ME: {self.me}")
             partial = self.data.read_bits(1) == 1
             if partial:
                 q_x = FloatQuantizer(-1, 1, Q_LOW)
