@@ -2,6 +2,7 @@
 WANTED = {
     '590c621186f774138d11ea29',  # flashdrive
     '5c94bbff86f7747ee735c08f',  # lab key
+    '5af0548586f7743a532b7e99',  # ibuprofen
 
 
     "543be5e94bdc2df1348b4568",  # "Key"

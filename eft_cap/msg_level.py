@@ -245,7 +245,7 @@ class Loot:
         if not me:
             return False
         delta = dist(me.pos, self.last_pos)
-        if delta > 2 or self.skipped_updates > 40:
+        if delta > 0.1 or self.skipped_updates > 2:
             self.last_pos = me.pos.copy()
             return me
 
@@ -309,6 +309,7 @@ class Loot:
 
     def update_by_dist(self):
         self.by_dist = sorted(self.by_id.values(), key=lambda x: x.get('dist', 1000.0))
+        self.by_dist_wanted = sorted(self.wanted.values(), key=lambda x: x.get('dist', 1000.0))
 
     def item_to_row(self, item):
         classes = ['loot']
@@ -365,7 +366,7 @@ class Loot:
         rows = self.get_loot(self.by_dist, 3)
 
         if self.wanted:
-            rows.extend(self.get_loot(self.wanted.values(), 5, classes=['wanted']))
+            rows.extend(self.get_loot(self.by_dist_wanted, 5, classes=['wanted']))
         if self.by_price:
             rows.extend(self.get_loot(self.by_price, 10))
         return rows
