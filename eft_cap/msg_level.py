@@ -297,19 +297,25 @@ class Loot:
         return {
             'className': ' '.join(classes),
             'row': [
-            dist,
-            item.get('vdist', '-'),
-            item.get('angle', '-'),
-            f'{name}',
-            f'Price: {item.get("total_price", "unk")}',
-            {
-                'text': 'disable',
-                'action': {
-                    'type': 'SERVER_MSG',
-                    'payload': {'action': 'LOOT_HIDE', 'id': item['id']},
+                dist,
+                item.get('vdist', '-'),
+                item.get('angle', '-'),
+                {
+                    'text': name,
+                    'action': {
+                        'type': 'MSG_TO_SERVER',
+                        'payload': {'type': 'LOOT_HIDE', 'payload': {'id': item['id']}},
+                    },
                 },
-            },
-        ]
+                f'Price: {item.get("total_price", "unk")}',
+                {
+                    'text': 'disable',
+                    'action': {
+                        'type': 'MSG_TO_SERVER',
+                        'payload': {'type': 'LOOT_HIDE', 'payload': {'id': item['id']}},
+                    },
+                },
+            ],
         }
 
     def display_rows(self):

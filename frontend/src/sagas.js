@@ -106,15 +106,16 @@ async function reconnecting(emitter, state) {
   }
 }
 
+const ws_state = { ws: null, disconnected: true, closing: false }
+
 function createConnection(emitter) {
-  const state = { ws: null, disconnected: true, closing: false }
   const on_close = () => {
-    state.closing = true
-    if (state.ws) {
-      state.ws.close()
+    ws_state.closing = true
+    if (ws_state.ws) {
+      ws_state.ws.close()
     }
   }
-  reconnecting(emitter, state)
+  reconnecting(emitter, ws_state)
   return on_close
 }
 
@@ -132,9 +133,16 @@ function* websocketSagas() {
   }
 }
 
+function* msgToServer(action) {
+  console.log("Got msg to server action: ", action)
+  if (ws_state["ws"]) {
+    ws_state["ws"].send(JSON.stringify(action.payload))
+  }
+}
+
 function* root() {
   //  yield takeLatest(actions.loadStats, loadStats)
-  yield all([fork(websocketSagas)])
+  yield all([fork(websocketSagas), takeEvery("MSG_TO_SERVER", msgToServer)])
 }
 
 export default root

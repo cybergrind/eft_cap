@@ -12,13 +12,20 @@ class IndexPage extends Component {
 
     const body = rows.map((row, idx) => {
       const row_content = row.row.map((cell, cell_idx) => {
+        const key = `td_${idx}_${cell_idx}`
         let cell_text
         if (["string", "number"].includes(typeof cell)) {
           cell_text = cell
+          return <td key={key}>{cell_text}</td>
         } else {
           cell_text = cell.text
+          const click_action = () => this.props.dispatch(cell.action)
+          return (
+            <td key={key} onClick={click_action}>
+              {cell_text}
+            </td>
+          )
         }
-        return <td key={`td_${idx}_${cell_idx}`}>{cell_text}</td>
       })
       return (
         <tr key={`row_${idx}`} className={row.className}>

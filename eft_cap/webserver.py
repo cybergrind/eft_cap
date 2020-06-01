@@ -37,11 +37,18 @@ class App:
         try:
             self.ws_clients.append(ws)
             while True:
-                await ws.send_json({'type': 'PING', 'time': time.time()})
-                await asyncio.sleep(1)
-                # self.log.warning('Update')
+                msg = await ws.receive_json()
+                try:
+                    await self.handle_msg(msg)
+                except:
+                    self.log.exception(f'During handle: {msg}')
         finally:
             self.ws_clients.remove(ws)
+
+    async def handle_msg(self, msg):
+        if msg['type'] == 'LOOT_HIDE':
+            payload = msg['payload']
+            GLOBAL['loot'].hide(payload['id'])
 
     @property
     def routes(self):
@@ -102,7 +109,7 @@ class App:
             if player.is_scav:
                 classes.append('scav')
 
-            if player.group_id:
+            if player.group_id and player.group_id != -1:
                 if player.group_id == my_group:
                     classes.append('my_group')
                 else:
