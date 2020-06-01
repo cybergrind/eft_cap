@@ -8,3 +8,8 @@ bitarray==1.2.2
 black[d]==19.10b0
 fan_tools==2.6.2
 pytest-asyncio
+
+vg==1.8.0
+starlette==0.13.4
+uvicorn==0.11.5
+aiofiles==0.5.0

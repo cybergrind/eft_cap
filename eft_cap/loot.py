@@ -191,7 +191,7 @@ def json_loot(d: ByteStream, ctx):
     out['position'] = d.read_vector()
     out['rotation'] = d.read_vector()
     out['item'] = read_item(d, ctx)
-    out['name'] = out['item']['info'].get('name', 'NO NAME')
+    out['name'] = out['item']['info'].get('name', f'NO NAME/{out["item"]["template_id"]}')
     if d.read_bool():
         p = out['profiles'] = []
         num_profiles = d.read_u32()

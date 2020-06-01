@@ -267,7 +267,12 @@ class Loot:
         self.by_dist = sorted(self.by_id.values(), key=lambda x: x.get('dist', 1000.0))
 
     def item_to_row(self, item):
-        name = item.get('name', 'NO NAME')
+        if 'name' in item:
+            name = item['name']
+        else:
+            item['name'] = f"NO NAME: {item['item']['template_id']}"
+            name = item['name']
+        # name = item.get('name', 'NO NAME')
         # if name == 'quest_sas_san1':
         #     pprint(item)
         return [
@@ -289,7 +294,7 @@ class Loot:
         rows = self.get_loot(self.by_dist, 3)
         # print(rows[0])
         if self.by_price:
-            rows.extend(self.get_loot(self.by_price, 15))
+            rows.extend(self.get_loot(self.by_price, 5))
         return rows
 
     def display_loot(self):
@@ -308,6 +313,7 @@ GLOBAL = {
     'me': None,
     'loot': Loot(),
     'get_qsize': lambda: random.randint(1, 100),
+    'on_exit': [],
 }
 PLAYERS = {}
 

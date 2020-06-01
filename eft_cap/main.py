@@ -11,6 +11,8 @@ import time
 sys.path.append('.')
 from eft_cap.tk_ui import App
 from eft_cap.network_base import NetworkTransport
+from eft_cap.msg_level import GLOBAL
+from eft_cap import webserver
 
 
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
@@ -22,6 +24,7 @@ def parse_args():
     parser.add_argument('packets_file', nargs='?')
     parser.add_argument('--packet-delay', type=float, default=0)
     parser.add_argument('--tk', action='store_true')
+    parser.add_argument('--web', action='store_true')
     parser.add_argument('--profile', action='store_true')
     parser.add_argument('--limit', type=int, default=None)
     parser.add_argument('--skip', type=int, default=None)
@@ -60,12 +63,18 @@ def capture_diver(q: Queue):
             )
 
 
+def gen_kill(p):
+    def _inner():
+        log.warning('Killing divert process...')
+        return p.kill()
+    return _inner
+
 async def capture():
     q = Queue()
     p = Process(target=capture_diver, args=(q,))
     p.start()
     t = time.time()
-    from eft_cap.msg_level import GLOBAL
+    GLOBAL['on_exit'].append(gen_kill(p))
     GLOBAL['get_qsize'] = lambda: q.qsize()
     try:
         while True:
@@ -136,6 +145,8 @@ def run(args, p_source):
     loop = asyncio.get_event_loop()
     if args.tk:
         app = App(loop)
+    elif args.web:
+        app = webserver.App(loop)
     loop.run_until_complete(t.run(limit=args.limit))
 
 
