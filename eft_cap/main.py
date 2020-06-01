@@ -69,6 +69,7 @@ def gen_kill(p):
         return p.kill()
     return _inner
 
+
 async def capture():
     q = Queue()
     p = Process(target=capture_diver, args=(q,))
@@ -97,7 +98,6 @@ async def capture():
         p.terminate()
 
 
-
 def n_separated_file(name):
     with open(name) as f:
         line = f.readline()
@@ -114,7 +114,7 @@ def from_shark(packet):
     data = bytes.fromhex(packet["_source"]["layers"]["data"]["data.data"].replace(':', ''))
     return {
         'data': data,
-        'incoming': ip['ip.dst'].startswith('192.168.88.')
+        'incoming': ip['ip.dst'].startswith('192.168')
     }
 
 
