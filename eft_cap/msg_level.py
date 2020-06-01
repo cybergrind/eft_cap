@@ -58,17 +58,21 @@ class Loot:
         self.all_items = {}
 
     def hide(self, id):
+        if id in self.by_id:
+            item = self.by_id.pop(id)
+
         if id in self.hidden:
             return
-        item = self.by_id.pop(id)
         self.hidden[id] = item
         self.update_by_price()
         self.update_by_dist()
 
     def unhide(self, id):
+        if id in self.hidden:
+            item = self.hidden.pop(id)
         if id in self.by_id:
             return
-        item = self.hidden.pop(id)
+
         self.by_id[id] = item
         self.update_by_price()
         self.update_by_dist()
@@ -183,7 +187,12 @@ class Loot:
         # print('to parent')
         # pprint(to_parent)
         old_price = get_total_price(from_parent)
-        recurse_delete(from_parent, from_item['id'])
+        if from_item['id'] == from_parent['id']:
+            if 'crate' in from_item:
+                crate = from_item['crate']
+                crate['item'] = {'info': {'price': 0}, 'id': 'deleted_item', 'stack_count': 0}
+        else:
+            recurse_delete(from_parent, from_item['id'])
         self.grid_add(from_item, to_item, _to['location_in_grid'])
 
         for src in [from_parent, to_parent]:
@@ -194,6 +203,7 @@ class Loot:
                 crate = src['crate']
                 if crate['ephemeral']:
                     self.hide(crate['id'])
+                    new_price = 0
                 crate['total_price'] = new_price
                 if new_price < self.PRICE_TRESHOLD:
                     self.hide(src['crate']['id'])
@@ -312,7 +322,7 @@ class Loot:
         rows = self.get_loot(self.by_dist, 3)
         # print(rows[0])
         if self.by_price:
-            rows.extend(self.get_loot(self.by_price, 5))
+            rows.extend(self.get_loot(self.by_price, 10))
         return rows
 
     def display_loot(self):
@@ -898,8 +908,7 @@ class MsgDecoder(ParsingMethods):
             self.cid = self.data.read_u8()
             print(f"Exit: {PLAYERS[self.cid]}")
             del PLAYERS[self.cid]
-            # exit(0)
-            # MsgDecoder.exit -= 1
+
         elif self.op_type == GAME_UPDATE:
             # print(f'READSIZE: {len(self.content)} / {self.content} / {self}')
             # bprint(self.content)
