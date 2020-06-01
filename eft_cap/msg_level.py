@@ -290,6 +290,8 @@ class Loot:
         out = []
         # remove quest_
         for item in items:
+            if not isinstance(item, dict):
+                continue
             if item in self.added:
                 continue
             if self.is_ignored(item):
