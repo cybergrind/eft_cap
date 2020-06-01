@@ -193,14 +193,6 @@ class NetworkTransport:
         if sess_id not in self.session_ok:
             self.session_ok.append(sess_id)
 
-    def add_msg(self, ctx, msg=None):
-        ctx.setdefault('message', []).append({
-            'channel_id': ctx['channel_id'],
-            'msg_len': ctx['msg_len'],
-            # 'msg_id': ctx['msg_id'],
-            'msg': msg,
-        })
-
     def without_fragment(self, _id, fragments):
         for fragment in fragments:
             if fragment['frag_id'] == _id:

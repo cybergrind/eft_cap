@@ -884,7 +884,6 @@ class MsgDecoder(ParsingMethods):
         # stream.print_rest()
         self.try_decode()
         # print(msg)
-        self.transport.add_msg(self.ctx, self)
         # print(f'return offset: {stream.bit_offset} / {len(stream.stream)}')
         return stream
 
