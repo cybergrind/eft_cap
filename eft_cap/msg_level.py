@@ -75,7 +75,7 @@ class Loot:
 
     def recursive_add(self, item, nesting, ctx, **kwargs):
         _id = item['id']
-        if len(_id) not in (24, 25, 26, 27):
+        if len(_id) not in (24, 25, 26, 27, 36):
             print(f'WRONG ID: {_id} / LEN: {len(_id)}')
             pprint(item)
             # exit(1)
@@ -96,6 +96,7 @@ class Loot:
         if not loot:
             return
         for json_item in loot:
+            # ppring(json_item)
             self.store_item(json_item['item'], {'crate': json_item})
             total_price = json_item.get('total_price', 0)
             if 'id' not in json_item:
@@ -114,8 +115,7 @@ class Loot:
         self.update_by_price()
 
     def get_pid_in_grid(self, item, location):
-        # pprint(location)
-        # pprint(item)
+
         for grid in item['grid']:
             for grid_item in grid['items']:
                 gl = grid_item['location']
@@ -191,7 +191,10 @@ class Loot:
                 src['player'].update_loot_price()
             elif 'crate' in src:
                 new_price = get_total_price(from_parent)
-                src['crate']['total_price'] = new_price
+                crate = src['crate']
+                if crate['ephemeral']:
+                    self.hide(crate['id'])
+                crate['total_price'] = new_price
                 if new_price < self.PRICE_TRESHOLD:
                     self.hide(src['crate']['id'])
                 else:
@@ -275,14 +278,29 @@ class Loot:
         # name = item.get('name', 'NO NAME')
         # if name == 'quest_sas_san1':
         #     pprint(item)
-        return [
-            item.get('dist', '-'),
+        dist = item.get('dist', '-')
+        classes = ['loot']
+        if isinstance(dist, float):
+            if dist < 50:
+                classes.append('nearby')
+
+        return {
+            'className': ' '.join(classes),
+            'row': [
+            dist,
             item.get('vdist', '-'),
             item.get('angle', '-'),
             f'{name}',
             f'Price: {item.get("total_price", "unk")}',
-            {'text': 'disable', 'callback': lambda x: self.hide(item['id'])},
+            {
+                'text': 'disable',
+                'action': {
+                    'type': 'SERVER_MSG',
+                    'payload': {'action': 'LOOT_HIDE', 'id': item['id']},
+                },
+            },
         ]
+        }
 
     def display_rows(self):
         me = GLOBAL['me']
@@ -385,6 +403,9 @@ class Player(ParsingMethods):
         self.price = 0
         self.loot_price = 0
         self.price_class = '-1'
+        self.is_scav = False
+        self.group_id = -1
+
         if not msg:
             return
 
@@ -411,6 +432,9 @@ class Player(ParsingMethods):
             nonlocal _my_total_price
             if nesting == 1 and ctx.get('slot', {}).get('id', None) in SKIP:
                 return True  # skip
+
+            if isinstance(item, list):
+                return
             _my_total_price += item['info'].get('price', 0) * item['stack_count']
 
         recurse_item(self.inventory, tot)
@@ -454,6 +478,7 @@ class Player(ParsingMethods):
         self.prof.pop("InsuredItems")
         self.prof.pop("ConditionCounters")
         self.prof.pop("Stats")
+
         self.log.debug(self.prof)
         info = self.prof.get("Info")
         self.nickname = info.get("Nickname")
@@ -463,6 +488,9 @@ class Player(ParsingMethods):
         self.is_npc = self.is_scav and self.prof.get('aid') == '0'
         side = info.get("Side")
         self.side = "SCAV" if side == "Savage" else side
+        self.group_id = info.get('GroupId', None)
+        if self.group_id:
+            self.group_id = self.group_id[-3:]
         self.log.info(
             f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {self.pose}"
         )
@@ -477,7 +505,11 @@ class Player(ParsingMethods):
             self.price_class = f'{round(self.loot_price / 1000_0000, 2)}M'
 
     def __str__(self):
-        return f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/{self.surv_class[:4]}] {self.nickname}:{self.price_class}[{self.cid}]'
+        return (
+            f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/'
+            f'{self.surv_class[:4]}/{self.group_id}] {self.nickname}:'
+            f'{self.price_class}[{self.cid}]'
+        )
 
     @staticmethod
     def dummy(cid, me=False):

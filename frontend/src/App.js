@@ -1,21 +1,13 @@
-import React from 'react'
-import { Provider } from 'react-redux'
-import { Route, Switch } from 'react-router'
-import { ConnectedRouter } from 'connected-react-router'
-import { configureStore, history } from './store'
+import React from "react"
+import { Provider } from "react-redux"
+import { Route, Switch } from "react-router"
+import { ConnectedRouter } from "connected-react-router"
+import { configureStore, history } from "./store"
 
-import './App.css'
-
-
-function IndexPage(){
-    return (
-       <div>Hello</div>
-    )
-}
-
+import "./App.css"
+import IndexPage from "./pages/indexPage"
 
 const store = configureStore()
-
 
 function App() {
   return (
@@ -28,7 +20,7 @@ function App() {
         </>
       </ConnectedRouter>
     </Provider>
-  );
+  )
 }
 
-export default App;
+export default App

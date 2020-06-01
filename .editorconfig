@@ -13,3 +13,6 @@ emacs_py_project = (f-join (projectile-project-root) ".")
 
 [Makefile]
 indent_style = tab
+
+[{**.js, **.html, **.jsx}]
+indent_size = 2

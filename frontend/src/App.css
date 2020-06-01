@@ -36,3 +36,48 @@
     transform: rotate(360deg);
   }
 }
+
+.table-smaller td, .table-smaller th {
+  padding: 0rem;
+  font-size: 0.9rem;
+}
+
+.alive.player {
+  background-color: gold;
+}
+.alive.player.my_group {
+  background-color: white;
+}
+
+.alive.player.other_group {
+  font-weight: bold;
+}
+
+.alive.player.brawl {
+  background-color: crimson;
+  color: white;
+}
+.alive.player.nearby {
+  background-color: lightcoral;
+  color: white;
+}
+
+.alive.scav.nearby {
+  background-color: aquamarine;
+}
+
+.alive.scav.brawl {
+  background-color: aqua;
+}
+
+.alive {
+  background-color: lightgreen;
+}
+
+.dead {
+  background-color: lightgrey;
+}
+
+.loot.nearby {
+  background-color: lightsalmon;
+}

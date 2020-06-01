@@ -79,6 +79,7 @@ def recurse_item(item, func, nesting=0, ctx={}):
         recurse_item(
             slot['contained_item'], func, nesting=nesting + 1, ctx={**ctx, 'slot': slot}
         )
+
     for grid in item['grid']:
         for grid_item in grid['items']:
             recurse_item(
@@ -114,9 +115,11 @@ def recurse_delete(item, delete_id):
     if delete_id == item['id']:
         return True  # delete = True
 
+    new_slots = []
     for slot in item['slots']:
-        if recurse_delete(slot['contained_item'], delete_id):
-            slot['contained_item'] = []
+        if not recurse_delete(slot['contained_item'], delete_id):
+            new_slots.append(slot)
+    item['slots'] = new_slots
 
     for grid in item['grid']:
         new_items = []
@@ -188,9 +191,13 @@ def json_loot(d: ByteStream, ctx):
 
     if d.read_u8():
         out['id'] = d.read_string()
+        out['ephemeral'] = False
+    else:
+        out['ephemeral'] = True
     out['position'] = d.read_vector()
     out['rotation'] = d.read_vector()
     out['item'] = read_item(d, ctx)
+    name = out['item']['info'].get('name', None)
     out['name'] = out['item']['info'].get('name', f'NO NAME/{out["item"]["template_id"]}')
     if d.read_bool():
         p = out['profiles'] = []

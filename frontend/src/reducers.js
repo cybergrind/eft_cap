@@ -1,25 +1,39 @@
-import { combineReducers } from 'redux'
-import { connectRouter } from 'connected-react-router'
-import * as actions from './actions'
-import { handleActions } from 'redux-actions'
-import * as CONST from './const'
+import { combineReducers } from "redux"
+import { connectRouter } from "connected-react-router"
+import * as actions from "./actions"
+import { handleActions } from "redux-actions"
+import * as CONST from "./const"
 
-//const stats = handleActions(
-//  {
-//    [actions.statsLoaded]: (previous, action) => {
-//      const { stats } = action.payload
-//      return {
-//        ...previous,
-//        stats,
-//        state: CONST.API.FINISHED,
-//      }
-//    },
-//)
+const ws = handleActions(
+  {
+    [actions.wsConnected]: (previous, action) => {
+      return { ...previous, connected: true }
+    },
+    [actions.wsDisconnected]: (previous, action) => {
+      return { ...previous, connected: false }
+    },
+  },
+  { connected: false }
+)
 
-const createRootReducer = history =>
+const table = handleActions(
+  {
+    [actions.drawTable]: (previous, action) => {
+      const { head = [], rows = [] } = action
+      return {
+        ...previous,
+        head,
+        rows,
+      }
+    },
+  },
+  { head: [], rows: [] }
+)
+const createRootReducer = (history) =>
   combineReducers({
     router: connectRouter(history),
-    // stats,
+    ws,
+    table,
   })
 
 export default createRootReducer

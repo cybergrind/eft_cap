@@ -43,5 +43,11 @@
     ]
   },
   "proxy": "http://localhost:7999",
-  "homepage": "http://localhost:7999/static"
+  "homepage": "http://localhost:7999/static",
+  "devDependencies": {
+    "prettier": "^2.0.5"
+  },
+  "prettier": {
+    "semi": false
+  }
 }

@@ -1,4 +1,4 @@
-import { createSelector } from 'reselect'
+import { createSelector } from "reselect"
 
-export const currentImage = state => state.currentImage
-export const stats = state => state.stats
+export const ws = (state) => state.ws
+export const table = (state) => state.table

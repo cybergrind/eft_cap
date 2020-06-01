@@ -1,18 +1,23 @@
 import {
   call,
   put,
+  all,
+  fork,
+  take,
   takeLatest,
   delay,
   select,
   takeLeading,
   takeEvery,
   throttle,
-} from 'redux-saga/effects'
-import { replace, push } from 'connected-react-router'
-import ky from 'ky-universal'
-import qs from 'query-string'
-import * as actions from './actions'
-import * as selectors from './selectors'
+  actionChannel,
+} from "redux-saga/effects"
+import { eventChannel } from "redux-saga"
+import { replace, push } from "connected-react-router"
+import ky from "ky-universal"
+import qs from "query-string"
+import * as actions from "./actions"
+import * as selectors from "./selectors"
 
 //
 //function getCookie(name) {
@@ -81,8 +86,55 @@ import * as selectors from './selectors'
 //  }
 //}
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function reconnecting(emitter, state) {
+  while (true) {
+    if (state.disconnected && !state.ws) {
+      console.log("Trying connect")
+      state.ws = new WebSocket("ws://localhost:7999/ws")
+
+      state.ws.onmessage = (e) => {
+        return emitter(JSON.parse(e.data))
+      }
+      state.ws.onclose = () => {
+        state.ws = null
+        state.disconnected = true
+      }
+    }
+    await sleep(1000)
+  }
+}
+
+function createConnection(emitter) {
+  const state = { ws: null, disconnected: true, closing: false }
+  const on_close = () => {
+    state.closing = true
+    if (state.ws) {
+      state.ws.close()
+    }
+  }
+  reconnecting(emitter, state)
+  return on_close
+}
+
+function websocketInit() {
+  return eventChannel((emitter) => {
+    return createConnection(emitter)
+  })
+}
+
+function* websocketSagas() {
+  const channel = yield call(websocketInit)
+  while (true) {
+    const action = yield take(channel)
+    yield put(action)
+  }
+}
+
 function* root() {
-//  yield takeLatest(actions.loadStats, loadStats)
+  //  yield takeLatest(actions.loadStats, loadStats)
+  yield all([fork(websocketSagas)])
 }
 
 export default root

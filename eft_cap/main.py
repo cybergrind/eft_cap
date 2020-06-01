@@ -147,7 +147,9 @@ def run(args, p_source):
         app = App(loop)
     elif args.web:
         app = webserver.App(loop)
-    loop.run_until_complete(t.run(limit=args.limit))
+    transport_task = loop.create_task(t.run(limit=args.limit))
+    GLOBAL['on_exit'].append(lambda: transport_task.cancel())
+    loop.run_until_complete(transport_task)
 
 
 def main():
