@@ -1,6 +1,7 @@
 import asyncio
 import pathlib
 import time
+from pprint import pprint
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, FileResponse
@@ -115,6 +116,11 @@ class App:
                 else:
                     classes.append('other_group')
 
+            if hasattr(player, 'wanted') and player.is_scav:
+                classes.append('player_wanted')
+                # pprint(player)
+                # exit(9)
+
             if dist == 0 or (my_group and player.group_id and player.group_id == my_group):
                 pass
             elif dist < 50:
@@ -138,7 +144,7 @@ class App:
         GLOBAL['loot'].update_location()
         loot = GLOBAL['loot'].display_loot()
         await self.draw_table(
-            ['Dist', 'VDist', 'Angle', 'Name', 'Coord', 'Is Alive'],
+            ['Dist', 'VDist', 'Angle', 'Name LVL/Frac/Type/Party', 'Coord', 'Is Alive'],
             # [f'Head: {i}' for i in range(10)],
             # [[f'Inner: {x}/{y}/ {time.time()}' for x in range(10)] for y in range(6)]
             [*players, *dead_players, *loot]

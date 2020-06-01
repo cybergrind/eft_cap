@@ -70,6 +70,11 @@
   background-color: aqua;
 }
 
+.player_wanted {
+  border: 2px solid crimson;
+  font-weight: bold;
+}
+
 .alive {
   background-color: lightgreen;
 }
@@ -80,4 +85,12 @@
 
 .loot.nearby {
   background-color: lightsalmon;
+}
+
+.loot.wanted {
+  background-color: lightskyblue;
+}
+
+.loot.wanted.nearby {
+  background-color: crimson;
 }

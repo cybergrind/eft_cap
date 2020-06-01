@@ -23,6 +23,7 @@ from eft_cap.loot import (
     recurse_item,
 )
 from eft_cap.trig_helpers import angle, dist, fwd_vector, norm_angle, quaternion_to_euler
+from eft_cap.wanted import WANTED
 
 if TYPE_CHECKING:
     from eft_cap.network_base import NetworkTransport
@@ -50,6 +51,7 @@ class Loot:
         self.by_id = {}
         self.by_dist = []
         self.by_price = []
+        self.wanted = {}
         self.last_pos = np.array([0, 0, 0], np.float)
         self.hidden = {}
         self.skipped_updates = 0
@@ -61,9 +63,13 @@ class Loot:
         if id in self.by_id:
             item = self.by_id.pop(id)
 
+        if id in self.wanted:
+            self.wanted.pop(id)
+
         if id in self.hidden:
             return
         self.hidden[id] = item
+
         self.update_by_price()
         self.update_by_dist()
 
@@ -74,6 +80,7 @@ class Loot:
             return
 
         self.by_id[id] = item
+
         self.update_by_price()
         self.update_by_dist()
 
@@ -83,6 +90,7 @@ class Loot:
             print(f'WRONG ID: {_id} / LEN: {len(_id)}')
             pprint(item)
             # exit(1)
+
         if nesting == 0:
             ctx['parent'] = item['id']
             item['parent'] = None
@@ -90,8 +98,22 @@ class Loot:
                 item['crate'] = ctx['crate']
         elif nesting > 0:
             item['parent'] = ctx['parent']
+            if 'crate' in ctx:
+                item['crate'] = ctx['crate']
+        if item['template_id'] in WANTED:
+            item['wanted'] = True
+            if 'crate' in ctx:
+                crate = item['crate']
+                crate['wanted'] = True
+                self.wanted[crate['id']] = crate
+            elif 'player' in ctx:
+                ctx['player'].wanted = True
+
         if _id not in self.all_items:
             self.all_items[_id] = item
+
+    def update_wanted_flat(self, crate):
+        pass
 
     def store_item(self, item, ctx={}):
         recurse_item(item, self.recursive_add, ctx=ctx)
@@ -100,9 +122,7 @@ class Loot:
         if not loot:
             return
         for json_item in loot:
-            # ppring(json_item)
-            self.store_item(json_item['item'], {'crate': json_item})
-            total_price = json_item.get('total_price', 0)
+
             if 'id' not in json_item:
                 if 'item' not in json_item:
                     continue
@@ -110,7 +130,12 @@ class Loot:
                 x = int(json_item['position'][0])
                 z = int(json_item['position'][2])
                 json_item['id'] = f'{name}_{x}_{z}'
-            if self.is_ignored(json_item):
+            self.store_item(json_item['item'], {'crate': json_item})
+            total_price = json_item.get('total_price', 0)
+
+            if 'wanted' in json_item:
+                self.by_id[json_item['id']] = json_item
+            elif self.is_ignored(json_item):
                 self.hidden[json_item['id']] = json_item
             elif total_price < self.PRICE_TRESHOLD:
                 self.hidden[json_item['id']] = json_item
@@ -119,7 +144,6 @@ class Loot:
         self.update_by_price()
 
     def get_pid_in_grid(self, item, location):
-
         for grid in item['grid']:
             for grid_item in grid['items']:
                 gl = grid_item['location']
@@ -136,9 +160,6 @@ class Loot:
                 return parent_pid
 
             parent = self.all_items[parent_pid]
-            # pprint(_from)
-            # pprint(parent)
-
             location = _from['location_in_grid']
             _from_pid = self.get_pid_in_grid(parent, location)
 
@@ -148,6 +169,7 @@ class Loot:
             pprint(_from)
             # exit(131)
         return _from_pid
+
 
     def grid_add(self, item, container, location):
         for grid in container['grid']:
@@ -201,7 +223,7 @@ class Loot:
             elif 'crate' in src:
                 new_price = get_total_price(from_parent)
                 crate = src['crate']
-                if crate['ephemeral']:
+                if crate.get('ephemeral', False):
                     self.hide(crate['id'])
                     new_price = 0
                 crate['total_price'] = new_price
@@ -239,7 +261,7 @@ class Loot:
         self.skipped_updates = 0
 
         t = time.time()
-        if self.overloaded and self.hard_skips < 500 and t - self.last_update < 5:
+        if self.overloaded and self.hard_skips < 50 and t - self.last_update < 5:
             rows = self.display_rows()
             self.hard_skips += 1
         else:
@@ -254,8 +276,7 @@ class Loot:
             item['vdist'] = round(item_pos[1] - me.pos[1], 1)
         self.update_by_dist()
 
-    PRICE_TRESHOLD = 20000
-
+    PRICE_TRESHOLD = 18000
     IGNORE = ['quest_']
     # IGNORE = []
 
@@ -265,13 +286,23 @@ class Loot:
             if name.startswith(i):
                 return True
 
-    def get_loot(self, items, num):
+    def get_loot(self, items, num, classes=[]):
         out = []
         # remove quest_
         for item in items:
+            if item in self.added:
+                continue
             if self.is_ignored(item):
                 continue
-            out.append(item)
+            if not classes:
+                self.added.append(item)
+                if 'wanted' in item:
+                    out.append({'item': item, 'classes': ['wanted']})
+                else:
+                    out.append(item)
+            else:
+                self.added.append(item)
+                out.append({'item': item, 'classes': classes})
             if len(out) >= num:
                 break
         return out
@@ -280,6 +311,11 @@ class Loot:
         self.by_dist = sorted(self.by_id.values(), key=lambda x: x.get('dist', 1000.0))
 
     def item_to_row(self, item):
+        classes = ['loot']
+        if 'classes' in item:
+            classes.extend(item['classes'])
+            item = item['item']
+
         if 'name' in item:
             name = item['name']
         else:
@@ -289,7 +325,7 @@ class Loot:
         # if name == 'quest_sas_san1':
         #     pprint(item)
         dist = item.get('dist', '-')
-        classes = ['loot']
+
         if isinstance(dist, float):
             if dist < 50:
                 classes.append('nearby')
@@ -320,13 +356,16 @@ class Loot:
 
     def display_rows(self):
         me = GLOBAL['me']
+        self.added = []
         if not me:
             return []
 
         if not self.by_dist:
             return []
         rows = self.get_loot(self.by_dist, 3)
-        # print(rows[0])
+
+        if self.wanted:
+            rows.extend(self.get_loot(self.wanted.values(), 5, classes=['wanted']))
         if self.by_price:
             rows.extend(self.get_loot(self.by_price, 10))
         return rows
