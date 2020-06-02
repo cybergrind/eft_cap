@@ -339,12 +339,14 @@ class BitStream:
                 out.append(self.read_bits(8))
             else:
                 break
+        num_bytes -= c
+        assert num_bytes >= 0
 
         self.bit_offset += num_bytes * 8
         if self.DEBUG:
             self.next_bytes = self.stream[self.bit_offset:]
-        assert num_bytes - c > 0
-        return bytes(out) + self.orig_stream[curr_byte:curr_byte + num_bytes - c]
+
+        return bytes(out) + self.orig_stream[curr_byte:curr_byte + num_bytes]
 
     def read_bytes(self, num_bytes):
         self.align()
