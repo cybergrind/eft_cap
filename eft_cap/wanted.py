@@ -4,6 +4,8 @@ WANTED = {
     '5c94bbff86f7747ee735c08f',  # lab key
     '5af0548586f7743a532b7e99',  # ibuprofen
     '5d1b371186f774253763a656',  # plastic fuel
+    '5751a89d24597722aa0e8db0',  # golden star
+    '5755383e24597772cb798966',  # vaseline
 
     "5c1d0c5f86f7744bb2683cf0",  # "Lab. Blue keycard"
     "5c1d0d6d86f7744bb2683e1f",  # "Lab. Yellow keycard. "
@@ -34,10 +36,8 @@ WANTED = {
     "5448ba0b4bdc2d02308b456c",  # "Factory exit key"
     "5780cf7f2459777de4559322",  # "Marked key"
     "5780d0532459777a5108b9a2",  # "Customs office key"
-    "5780d0652459777df90dcb74",  # "Cabinet key"
-    "5780d07a2459777de4559324",  # "Portable cabin key"
-    "57a349b2245977762b199ec7",  # "Door key"
-    "590c62a386f77412b0130255",  # "Sliderkey Secure Flash drive"
+
+    # "590c62a386f77412b0130255",  # "Sliderkey Secure Flash drive"
     "5913915886f774123603c392",  # "Military base checkpoint key"
     "59148f8286f7741b951ea113",  # "Weapon safe key"
     "5a0448bc86f774736f14efa8",  # "The key to the closed premises of the sanatorium"
@@ -46,7 +46,7 @@ WANTED = {
     "5a0ea64786f7741707720468",  # "Office 107 East wing key"
     "5a0ea69f86f7741cd5406619",  # "Office 108 East wing key"
     "5a0ea79b86f7741d4a35298e",  # "Health resort utility room key"
-    "5a0eb38b86f774153b320eb0",  # "SMW car key"
+    # "5a0eb38b86f774153b320eb0",  # "SMW car key"
     "5a0eb6ac86f7743124037a28",  # "Cottage back entrance key"
     "5a0ec6d286f7742c0b518fb5",  # "West wing room 205 key"
     "5a0ec70e86f7742c0b518fba",  # "West wing room 207 key"
@@ -84,7 +84,7 @@ WANTED = {
     "5a145d4786f7744cbb6f4a12",  # "East wing room 306 key"
     "5a145d7b86f7744cbb6f4a13",  # "East wing room 308 key"
     "5a145ebb86f77458f1796f05",  # "East wing room 316 key"
-    "5a29357286f77409c705e025",  # "Sliderkey Flash drive"
+    # "5a29357286f77409c705e025",  # "Sliderkey Flash drive"
     "5ad5ccd186f774446d5706e9",  # "Key to OLI administrator office"
     "5ad5cfbd86f7742c825d6104",  # "Key to OLI logistics department office"
     "5ad5d20586f77449be26d877",  # "Key to utility room of OLI outlet"
