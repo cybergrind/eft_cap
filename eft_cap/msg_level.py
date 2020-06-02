@@ -160,6 +160,9 @@ class Loot:
                 return parent_pid
 
             parent = self.all_items[parent_pid]
+            if 'location_in_grid' not in _from:
+                return _from['container']['parent_id']
+
             location = _from['location_in_grid']
             _from_pid = self.get_pid_in_grid(parent, location)
 
@@ -208,14 +211,38 @@ class Loot:
         # pprint(to_item)
         # print('to parent')
         # pprint(to_parent)
+
         old_price = get_total_price(from_parent)
         if from_item['id'] == from_parent['id']:
             if 'crate' in from_item:
                 crate = from_item['crate']
                 crate['item'] = {'info': {'price': 0}, 'id': 'deleted_item', 'stack_count': 0}
+                self.hide(crate['id'])
+                # pprint(from_item)
+                del from_item['crate']
+                # exit(0)
         else:
             recurse_delete(from_parent, from_item['id'])
-        self.grid_add(from_item, to_item, _to['location_in_grid'])
+
+        if 'location_in_grid' in _to:  # move into grid
+            self.grid_add(from_item, to_item, _to['location_in_grid'])
+        elif 'container' in _to:  # equipping
+            ppid = _to['container']['parent_id']
+
+            # print('From parent')
+            # pprint(from_item)
+            # print('To item: ')
+            parent_inventory = self.all_items[ppid]
+            parent_inventory['slots'].append(
+                {'contained_item': from_item, 'id': _to['container']['container_id']}
+            )
+            # if ppid in self.all_items:
+            #     pprint(self.all_items[ppid])
+            # pprint('TO: ')
+            #
+            # pprint(_to)
+            # exit(0)  # TODO: delme
+
 
         for src in [from_parent, to_parent]:
             if 'player' in src:
@@ -797,7 +824,7 @@ class Player(ParsingMethods):
         d: BitStream = self.data
         if d.read_bits():
             size = d.read_bits(16)
-            odata = data = d.read_bytes_aligned(size)
+            data = d.read_bytes_aligned(size)
             cb = d.read_limited_bits(0, 2047)
             hash = d.read_u32()
             data = ByteStream(data)
@@ -826,10 +853,11 @@ class Player(ParsingMethods):
             if tag == 1:  # command
                 self.read_one_loot()
                 continue
+            # deserialize status
             _id = d.read_bits(16)
             status = d.read_limited_bits(0, 3)
             if status == 2:
-                d.read_limited_string(' ', 'z')
+                d.read_limited_string(' ', '\x7f')
             if d.read_bits():
                 d.read_u32()
                 d.read_bits()

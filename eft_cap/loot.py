@@ -504,8 +504,49 @@ def stubs(ids):
         stub(id, out)
     return out
 
+
+def read_slot_address(d: ByteStream, ctx: dict):
+    return {
+        'container': read_container(d, ctx)
+    }
+
+
+def read_split(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'from': read_polymorph(d, ctx),
+        'to': read_polymorph(d, ctx),
+        'count': d.read_u32(),
+        'split_operation_id': d.read_u16(),
+    }
+
+
+def read_transfer(d: ByteStream, ctx: dict):
+    return {
+        'id_1': d.read_string(),
+        'id_2': d.read_string(),
+        'count': d.read_u32(),
+        'transfer_operation_id': d.read_u16()
+    }
+
+
+def read_merge(d: ByteStream, ctx: dict):
+    return {
+        'id_1': d.read_string(),
+        'id_2': d.read_string(),
+        'merge_operation_id': d.read_u16(),
+    }
+
+
+def read_move_all(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'move_all_operation_id': d.read_u16()
+    }
+
+
 TYPES = {
-    **stubs(range(256)),
+    # **stubs(range(256)),
     0: read_quaterion,
     1: read_transform,
     2: read_vector3,
@@ -534,15 +575,20 @@ TYPES = {
     27: read_key_usages,
     28: json_loot,
     29: json_corpse,
+    32: read_slot_address,
     34: read_container,
     35: read_grid_item_address,
     36: read_owner_itself,
     41: read_magazine,
     42: read_bind,
     45: read_move,
+    46: read_move_all,
+    47: read_split,
+    48: read_merge,
+    49: read_transfer,
     51: read_throw,
     53: read_fold,
-    999_66: resource_key,
+    66: resource_key,
 }
 
 
