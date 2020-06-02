@@ -292,18 +292,19 @@ class Loot:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            if item in self.added:
+            if item['id'] in self.added:
                 continue
+
             if self.is_ignored(item):
                 continue
             if not classes:
-                self.added.append(item)
+                self.added.append(item['id'])
                 if 'wanted' in item:
                     out.append({'item': item, 'classes': ['wanted']})
                 else:
                     out.append(item)
             else:
-                self.added.append(item)
+                self.added.append(item['id'])
                 out.append({'item': item, 'classes': classes})
             if len(out) >= num:
                 break
