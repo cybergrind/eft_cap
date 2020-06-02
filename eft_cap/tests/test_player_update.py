@@ -2,13 +2,14 @@ import numpy as np
 import pytest
 from pathlib import Path
 from eft_cap.network_base import NetworkTransport
-from eft_cap.bin_helpers import BitStream
+from eft_cap.bin_helpers import BitStream, ByteStream
 from eft_cap.msg_level import GLOBAL, MsgDecoder
 from fan_tools.python import rel_path
 
 
 pytestmark = pytest.mark.asyncio
 BitStream.DEBUG = True
+ByteStream.DEBUG = True
 
 @pytest.fixture
 def packet_01():
@@ -24,11 +25,6 @@ class FakeArgs:
     packets_file = True
     skip = None
 
-class FakeMap:
-    bound_min = np.array([0.0, 0.0, 0.0], np.float)
-    bound_max = np.array([1000.0, 100.0, 1000.0], np.float)
-
-GLOBAL['map'] = FakeMap()
 
 async def test_01(packet_01):
     trans = NetworkTransport(packet_01, FakeArgs())
@@ -37,8 +33,13 @@ async def test_01(packet_01):
     assert False
 
 
-def test_02():
-    payload = b'\x1c\x00\x87\xce\x98\x80\xc3\xbc\xfbE\x93\x7f\x8a\x88G\x84.\x9c\x33\xc4\xcd\xea\xa1\x90\0x0a\x10\x00\x00\x00\x00'
+def test_02_update(shore):
+    # shore packet
+    payload = (b'\x74\x00\x89\x9c4\x82\xca\x02 -\x1a\xd6 \xf4nMn\x963\x84l\\\x81\x8cx\n\x06\x10\x84'
+               b'\x8d\x18)B\x005ed15b72ccf5cb1bf22f522a\x00\x00\x00\x00\x00\x00\xc0\x00\x00'
+               b'\x00\x00\x00\x08\x18@\x003:\x00\x06\x185ed15b72ccf5cb1bf22f5223\x00\xc1'
+               b'\x00\x00\x00\x00\x00\x18@\x00\x00\x00\x00\x00(')
+    print(len(payload))
     trans = NetworkTransport(packet_01, FakeArgs())
     trans.curr_packet = {'data': payload, 'incoming': True, 'num': 0, 'len': len(payload)}
     m = MsgDecoder(trans, {'incoming': True, 'channel_id': 7})

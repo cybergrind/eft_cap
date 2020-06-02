@@ -26,6 +26,7 @@ def packed(fmt, single=True):
 
 class ByteStream:
     log = logging.getLogger("ByteStream")
+    DEBUG = False
 
     def __init__(self, stream):
         self.byte_offset = 0
@@ -33,6 +34,7 @@ class ByteStream:
         self.named_positions = {}
         self.named_set = set()
         self.positions = []
+        self.next_bytes = []
         self.auto = 0
 
     def read_bytes(self, num):
@@ -44,6 +46,8 @@ class ByteStream:
             # )
             raise ParsingError(f'OS: {out[:20]} OFST: {self.byte_offset} NUM: {num} L: {len(self.orig_stream)}')
         self.byte_offset += num
+        if self.DEBUG:
+            self.next_bytes = self.orig_stream[self.byte_offset:]
         assert len(out) == num
         return out
 
@@ -324,11 +328,23 @@ class BitStream:
 
     def read_bytes_aligned(self, num_bytes):
         self.align()
-        curr_byte = int(self.bit_offset / 8)
+        out = []
+        c = 0
+        # when not aligned to word - read as LE
+        # after it's aligned - just read rest of the stream
+        while True:
+            curr_byte = int(self.bit_offset / 8)
+            if curr_byte % 4 != 0:
+                c += 1
+                out.append(self.read_bits(8))
+            else:
+                break
+
         self.bit_offset += num_bytes * 8
         if self.DEBUG:
             self.next_bytes = self.stream[self.bit_offset:]
-        return self.orig_stream[curr_byte:curr_byte + num_bytes]
+        assert num_bytes - c > 0
+        return bytes(out) + self.orig_stream[curr_byte:curr_byte + num_bytes - c]
 
     def read_bytes(self, num_bytes):
         self.align()
