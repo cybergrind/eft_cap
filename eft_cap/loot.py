@@ -111,28 +111,30 @@ def get_total_price(item):
     return _my_total_price
 
 
-def recurse_delete(item, delete_id):
+def recurse_delete(item, delete_id, level=0):
+    if level > 100:
+        raise NotImplementedError(f'Level: {level}')
+
     if delete_id == item['id']:
         return True  # delete = True
 
     new_slots = []
     for slot in item['slots']:
-        if not recurse_delete(slot['contained_item'], delete_id):
+        if not recurse_delete(slot['contained_item'], delete_id, level=level + 1):
             new_slots.append(slot)
     item['slots'] = new_slots
 
     for grid in item['grid']:
         new_items = []
         for grid_item in grid['items']:
-            if not recurse_delete(grid_item['item'], delete_id):
+            if not recurse_delete(grid_item['item'], delete_id, level=level + 1):
                 new_items.append(grid_item)
         grid['items'] = new_items
 
     for stack_slot in item['stack_slots']:
         new_items = []
-
         for inner_item in stack_slot['items']:
-            if not recurse_delete(inner_item, delete_id):
+            if not recurse_delete(inner_item, delete_id, level=level + 1):
                 new_items.append(inner_item)
         stack_slot['items'] = new_items
 
@@ -430,6 +432,7 @@ def read_move(d: ByteStream, ctx: dict):
         'move_operation_id': d.read_u16(),
     }
 
+
 def read_throw(d: ByteStream, ctx: dict):
     return {
         'id': d.read_string(),
@@ -511,14 +514,22 @@ def read_slot_address(d: ByteStream, ctx: dict):
     }
 
 
-def read_split(d: ByteStream, ctx: dict):
+def read_stack_slot_address(d: ByteStream, ctx: dict):
     return {
+        'container': read_container(d, ctx)
+    }
+
+
+
+def read_split(d: ByteStream, ctx: dict):
+    ret = {
         'id': d.read_string(),
         'from': read_polymorph(d, ctx),
         'to': read_polymorph(d, ctx),
         'count': d.read_u32(),
         'split_operation_id': d.read_u16(),
     }
+    return ret
 
 
 def read_transfer(d: ByteStream, ctx: dict):
@@ -542,6 +553,14 @@ def read_move_all(d: ByteStream, ctx: dict):
     return {
         'id': d.read_string(),
         'move_all_operation_id': d.read_u16()
+    }
+
+
+def read_toggle(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'value': d.read_bool(),
+        'toggle_operation_id': d.read_u16()
     }
 
 
@@ -576,6 +595,7 @@ TYPES = {
     28: json_loot,
     29: json_corpse,
     32: read_slot_address,
+    33: read_stack_slot_address,
     34: read_container,
     35: read_grid_item_address,
     36: read_owner_itself,
@@ -587,6 +607,7 @@ TYPES = {
     48: read_merge,
     49: read_transfer,
     51: read_throw,
+    52: read_toggle,
     53: read_fold,
     66: resource_key,
 }
@@ -597,7 +618,7 @@ def read_many_polymorph(d: ByteStream, ctx={}):
     num = d.read_u32()
     out = []
     for i in range(num):
-        p = read_polymorph(d, ctx)
+        p = read_polymorph(d, ctx, reraise=False)
         if p is not None:
             out.append(p)
         else:
@@ -605,7 +626,7 @@ def read_many_polymorph(d: ByteStream, ctx={}):
     return out
 
 
-def read_polymorph(d: ByteStream, ctx, reraise=False):
+def read_polymorph(d: ByteStream, ctx, reraise=True):
     d.store_pos('polymorph', auto=True)
     _type = d.read_u8()
 

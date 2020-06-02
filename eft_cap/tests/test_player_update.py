@@ -59,3 +59,44 @@ def test_03_update_string_error(shore):
     m.content = payload
     m.op_type = 170
     m.decode()
+
+
+def test_04_update_throw(shore):
+    payload = (b'\x44\x00\x8a\xa6\x10\x84\xc8\x9a\x81\x15\x90ZH\xba#\xde"\xb93\x04\xedb'
+               b'\x02\xa1X\n\x00\x0e\x80\x013\x185ecefd59478cc53d1d7341ee\xab\x00\x00'
+               b'\x00\x00\x00\x15@\x00\x00\x00\x00\x00h')
+    trans = NetworkTransport(packet_01, FakeArgs())
+    trans.curr_packet = {'data': payload, 'incoming': True, 'num': 0, 'len': len(payload)}
+    m = MsgDecoder(trans, {'incoming': True, 'channel_id': 7})
+    m.content = payload
+    m.op_type = 170
+    m.decode()
+
+
+def test_05_read_transfer(shore):
+    payload = (b'\x64\x00\x89:\xca\x82\xcb\xbe\xeb|\xc0\xc7,\x89c\x1d\xe3'
+               b'\x15SDh\xdb\x8cx\n\xd0\x08\x84\x8d\x811v\x00\x06'
+               b'\x185ed070f1bb713341547e77de\x1a5e4e9770e3174373744f251a64'
+               b'\x01\x00\x00\x00\x00\x00\x01\t\x00\x00\x00\x00\x00(!@')
+    trans = NetworkTransport(packet_01, FakeArgs())
+    trans.curr_packet = {'data': payload, 'incoming': True, 'num': 0, 'len': len(payload)}
+    m = MsgDecoder(trans, {'incoming': True, 'channel_id': 7})
+    m.content = payload
+    m.op_type = 170
+    m.decode()
+
+
+def test_06_read_split(shore):
+    payload = (b'\x98\x00\x89\xa8\xc9\x82\xcb\xe0\x9d|\xc0\xc7,\x89c\x1d\xe3'
+               b'\x15SDh\xdb\x8cx\n\xd0\x08\x84\x8d\x81/\xdc\x00\x06'
+               b'\x185ed070f1bb713341547e77de#\x00\x00\x00\x00\x00\x00'
+               b'\x00\x00\x00\x00\x00\x00\x01'
+               b'\x185ed00a2497355152f1702b50\x017!'
+               b'\x185ed12968491bdb6a68425cc7\ncartridges'
+               b'\x01\x00\x00\x00\x08\x00\x00\x00\x01@\x00\x00\x00\x00\x00\x08!')
+    trans = NetworkTransport(packet_01, FakeArgs())
+    trans.curr_packet = {'data': payload, 'incoming': True, 'num': 0, 'len': len(payload)}
+    m = MsgDecoder(trans, {'incoming': True, 'channel_id': 7})
+    m.content = payload
+    m.op_type = 170
+    m.decode()

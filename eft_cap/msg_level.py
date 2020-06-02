@@ -94,12 +94,16 @@ class Loot:
         if nesting == 0:
             ctx['parent'] = item['id']
             item['parent'] = None
-            if 'crate' in ctx:
-                item['crate'] = ctx['crate']
         elif nesting > 0:
             item['parent'] = ctx['parent']
-            if 'crate' in ctx:
-                item['crate'] = ctx['crate']
+
+        if 'crate' in ctx:
+            item['crate'] = ctx['crate']
+        elif 'player' in ctx:
+            item['player'] = ctx['player']
+        else:
+            raise NotImplementedError
+
         if item['template_id'] in WANTED:
             item['wanted'] = True
             if 'crate' in ctx:
@@ -154,6 +158,9 @@ class Loot:
         raise NotImplementedError
 
     def get_source_id(self, _from, container=False):
+        """
+        when container=True => we move into  grid, so we don't need to find what is there
+        """
         if 'container' in _from:
             parent_pid = _from['container']['parent_id']
             if container:
@@ -173,7 +180,6 @@ class Loot:
             # exit(131)
         return _from_pid
 
-
     def grid_add(self, item, container, location):
         for grid in container['grid']:
             grid['items'].append({'item': item, 'location': location})
@@ -188,7 +194,8 @@ class Loot:
         _from_pid = self.get_source_id(_from)
         _to_pid = self.get_source_id(_to, container=True)
 
-        from_item = self.all_items[_from_pid]
+        # from_item = self.all_items[_from_pid]
+        from_item = self.all_items[move_operation['id']]
         from_parent_key = from_item['parent']
         if isinstance(from_parent_key, str):
             from_parent = self.all_items[from_item['parent']]
@@ -213,14 +220,13 @@ class Loot:
         # pprint(to_parent)
 
         old_price = get_total_price(from_parent)
+        update_crates = []
+
         if from_item['id'] == from_parent['id']:
             if 'crate' in from_item:
                 crate = from_item['crate']
                 crate['item'] = {'info': {'price': 0}, 'id': 'deleted_item', 'stack_count': 0}
                 self.hide(crate['id'])
-                # pprint(from_item)
-                del from_item['crate']
-                # exit(0)
         else:
             recurse_delete(from_parent, from_item['id'])
 
@@ -229,40 +235,53 @@ class Loot:
         elif 'container' in _to:  # equipping
             ppid = _to['container']['parent_id']
 
-            # print('From parent')
-            # pprint(from_item)
-            # print('To item: ')
-            parent_inventory = self.all_items[ppid]
-            parent_inventory['slots'].append(
+            to_parent = self.all_items[ppid]
+            to_parent['slots'].append(
                 {'contained_item': from_item, 'id': _to['container']['container_id']}
             )
-            # if ppid in self.all_items:
-            #     pprint(self.all_items[ppid])
-            # pprint('TO: ')
-            #
-            # pprint(_to)
-            # exit(0)  # TODO: delme
+        if 'player' in to_parent:
+            pass
 
+        if 'crate' in from_item:
+            del from_item['crate']
+        elif 'player' in from_item:
+            del from_item['player']
+        else:
+            raise NotImplementedError
 
-        for src in [from_parent, to_parent]:
-            if 'player' in src:
-                src['player'].update_loot_price()
-            elif 'crate' in src:
-                new_price = get_total_price(from_parent)
-                crate = src['crate']
-                if crate.get('ephemeral', False):
-                    self.hide(crate['id'])
-                    new_price = 0
-                crate['total_price'] = new_price
-                if new_price < self.PRICE_TRESHOLD:
-                    self.hide(src['crate']['id'])
-                else:
-                    self.unhide(src['crate']['id'])
-                # print(f'OLD: {old_price} => {new_price}')
+        if 'crate' in to_parent:
+            from_item['crate'] = to_parent['crate']
+        elif 'player' in to_parent:
+            from_item['player'] = to_parent['player']
+        else:
+            raise NotImplementedError
 
-        # exit(10)
-        # pprint(to_item)
-        # pprint(to_item)
+        self.update_crate_or_player(from_parent, from_item)
+        self.update_crate_or_player(to_parent, from_item)
+
+    def process_split(self, split_operation):
+        # print(f'Split operation: {split_operation}')
+        # pprint(self.all_items[split_operation['id']])
+        assert split_operation['count'] < 210_000
+        # raise NotImplementedError
+
+    def update_crate_or_player(self, src, item):
+        if 'player' in src:
+            src['player'].update_loot_price()
+
+        elif 'crate' in src:
+            crate = src['crate']
+            new_price = get_total_price(crate['item'])
+
+            if crate.get('ephemeral', False):
+                self.hide(crate['id'])
+                new_price = 0
+            crate['total_price'] = new_price
+            if new_price < self.PRICE_TRESHOLD:
+                self.hide(src['crate']['id'])
+            else:
+                self.unhide(src['crate']['id'])
+            # print(f'OLD: {old_price} => {new_price}')
 
     def update_by_price(self):
         self.by_price = sorted(self.by_id.values(), key=lambda x: -x.get('total_price', 0))
@@ -474,7 +493,7 @@ class Map(ParsingMethods):
         self.bound_max = self.read_pos()
         unk8 = self.data.read_u16()
         unk9 = self.data.read_u8()
-        self.log.info(f"Map: {self.bound_min} to {self.bound_max}")
+        self.log.warning(f"Map: {self.bound_min} to {self.bound_max}")
 
     @property
     def bb(self):
@@ -585,10 +604,10 @@ class Player(ParsingMethods):
         if self.loot_price < 10000:
             self.price_class = '<10k'
             self.price_class = f'{self.loot_price}Rub'
-        elif self.loot_price < 1000000:
+        elif self.loot_price < 1000_000:
             self.price_class = f'{self.loot_price // 1000}K'
         else:
-            self.price_class = f'{round(self.loot_price / 1000_0000, 2)}M'
+            self.price_class = f'{round(self.loot_price / 1000_000, 1)}M'
 
     def __str__(self):
         return (
@@ -711,7 +730,13 @@ class Player(ParsingMethods):
             try:
                 self.update_loot()
             except:
-                # self.log.exception(f'When update loot: incoming={self.msg.incoming}')
+                self.log.exception(f'When update loot: incoming={self.msg.incoming}')
+                # old = self.data.bit_offset
+                # self.data.bit_offset = 0
+                # size = len(self.data.orig_stream)
+                # print(self.data.orig_stream)
+                # print(f'Size: {size} HX: {hex(size)}')
+                # ByteStream(self.data.orig_stream).dump_to('error.bin')
                 # ByteStream(self.msg.curr_packet['data']).dump_to('to_test.bin')
                 # exit(134)  # TODO: delme
                 pass
@@ -820,8 +845,10 @@ class Player(ParsingMethods):
             d.read_limited_bits(-1, 3)
         self.log.info(f'SKIP BITS FROM {start_bit} to {d.bit_offset}')  # TODO: delme
 
+
     def read_one_loot(self):
         d: BitStream = self.data
+        # d.bit_offset -= 3
         if d.read_bits():
             size = d.read_bits(16)
             data = d.read_bytes_aligned(size)
@@ -830,11 +857,14 @@ class Player(ParsingMethods):
             data = ByteStream(data)
 
             poly = read_polymorph(data, {}, reraise=True)
-            if poly and 'move_operation_id' in poly:
+            if poly:
                 try:
-                    GLOBAL['loot'].process_move(poly)
+                    if 'move_operation_id' in poly:
+                        GLOBAL['loot'].process_move(poly)
+                    elif 'split_operation_id' in poly:
+                        GLOBAL['loot'].process_split(poly)
                 except:
-                    self.log.exception('Process move')
+                    self.log.exception(f'Process operation: {poly}')
                     # exit(133)  # TODO: delme
 
     def update_loot(self):

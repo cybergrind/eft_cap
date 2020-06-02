@@ -1,5 +1,6 @@
 import asyncio
 import pathlib
+from sys import exit
 import time
 from pprint import pprint
 
@@ -72,6 +73,7 @@ class App:
         self.update_task.cancel()
         self.serve_task.cancel()
         self.loop.stop()
+        exit(0)
 
     async def draw_table(self, head, table):
         for ws in self.ws_clients:
