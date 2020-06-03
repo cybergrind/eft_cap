@@ -11,7 +11,6 @@ import json
 
 log = logging.getLogger('loot')
 DB_ITEMS = pathlib.Path('LeakedServer/db/items')
-PRICES = DB_ITEMS / '../templates/items'
 DB_EXISTS = DB_ITEMS.exists()
 ID_LEN = len('5888988e24597752fe43a6fa')
 
@@ -33,11 +32,8 @@ def get_description(template_id):
         return {'name': template_id}
     out = {}
     j_data = json.loads(f_item.read_text(encoding='utf8'))
-    out['name'] = j_data.get('_name')
-    p_item = PRICES.joinpath(p_name)
-    if p_item.exists():
-        pj_data = json.loads(p_item.read_text())
-        out['price'] = pj_data.get('Price', 0)
+    out['name'] = j_data.get('_name', f'Unknown: {template_id}')
+    out['price'] = j_data['_props']['CreditsPrice']  # j_data.get('_props', {}).get('CreditsPrice', 0)
     return out
 
 
@@ -443,7 +439,6 @@ def read_throw(d: ByteStream, ctx: dict):
 
 def read_fold(d: ByteStream, ctx: dict):
     _id = d.read_string()
-    print(f'ID: {_id}')
     return {
         'id': _id,
         'value': d.read_bool(),
@@ -564,6 +559,64 @@ def read_toggle(d: ByteStream, ctx: dict):
     }
 
 
+def read_remove_operation(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'remove_operation_id': d.read_u16(),
+    }
+
+
+def read_examine_operation(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'examine_operation_id': d.read_u16(),
+    }
+
+
+def read_swap_operation(d: ByteStream, ctx: dict):
+    return {
+        'id1': d.read_string(),
+        'to1': read_polymorph(d, ctx, reraise=True),
+        'id2': d.read_string(),
+        'to2': read_polymorph(d, ctx, reraise=True),
+        'swap_operation_id': d.read_u16(),
+    }
+
+
+def read_shot_operation(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'shot_operation_id': d.read_u16(),
+    }
+
+
+def read_setup_item_operation(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'zone_id': d.read_string(),
+        'position': read_vector3(d, ctx),
+        'rot': read_quaterion(d, ctx),
+        'setup_time': d.read_f32(),
+        'setup_operation_id': d.read_u16(),
+    }
+
+
+def read_apply_heal(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'body_part': d.read_u32(),
+        'count': d.read_u32(),
+        'heal_operation_id': d.read_u16()
+    }
+
+
+def read_operate_stationary_weapon(d: ByteStream, ctx: dict):
+    return {
+        'id': d.read_string(),
+        'operate_stationary_weapon_operation_id': d.read_u16(),
+    }
+
+
 TYPES = {
     # **stubs(range(256)),
     0: read_quaterion,
@@ -599,6 +652,8 @@ TYPES = {
     34: read_container,
     35: read_grid_item_address,
     36: read_owner_itself,
+    39: read_remove_operation,
+    40: read_examine_operation,
     41: read_magazine,
     42: read_bind,
     45: read_move,
@@ -606,9 +661,14 @@ TYPES = {
     47: read_split,
     48: read_merge,
     49: read_transfer,
+    50: read_swap_operation,
     51: read_throw,
     52: read_toggle,
     53: read_fold,
+    54: read_shot_operation,
+    55: read_setup_item_operation,
+    57: read_apply_heal,
+    65: read_operate_stationary_weapon,
     66: resource_key,
 }
 

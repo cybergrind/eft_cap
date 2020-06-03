@@ -47,9 +47,14 @@ Q_HIGH = 0.0009765625
 
 
 class Loot:
+    BY_DIST_NEARBY = 3
+    BY_DIST_WANTED = 7
+    BY_PRICE_EXPENSIVE = 10
+
     def __init__(self):
         self.by_id = {}
         self.by_dist = []
+        self.by_dist_wanted = []
         self.by_price = []
         self.wanted = {}
         self.last_pos = np.array([0, 0, 0], np.float)
@@ -407,17 +412,18 @@ class Loot:
     def display_rows(self):
         me = GLOBAL['me']
         self.added = []
+
         if not me:
             return []
 
         if not self.by_dist:
             return []
-        rows = self.get_loot(self.by_dist, 3)
+        rows = self.get_loot(self.by_dist, self.BY_DIST_NEARBY)
 
         if self.wanted:
-            rows.extend(self.get_loot(self.by_dist_wanted, 5, classes=['wanted']))
+            rows.extend(self.get_loot(self.by_dist_wanted, self.BY_DIST_WANTED, classes=['wanted']))
         if self.by_price:
-            rows.extend(self.get_loot(self.by_price, 10))
+            rows.extend(self.get_loot(self.by_price, self.BY_PRICE_EXPENSIVE))
         return rows
 
     def display_loot(self):
