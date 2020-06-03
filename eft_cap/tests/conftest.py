@@ -19,6 +19,11 @@ class FakeFactoryMap:
     bound_max = np.array([89.19, 29.7, 94], np.float)
 
 
+class FakeInterchangeMap:
+    bound_min = np.array([-634, -9.6, -616], np.float)
+    bound_max = np.array([766, 90.4, 584], np.float)
+
+
 @pytest.fixture
 def shore():
     GLOBAL['map'] = FakeShoreMap()
@@ -32,3 +37,8 @@ def woods():
 @pytest.fixture
 def factory():
     GLOBAL['map'] = FakeFactoryMap()
+
+
+@pytest.fixture
+def interchange():
+    GLOBAL['map'] = FakeInterchangeMap()

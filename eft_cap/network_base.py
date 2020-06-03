@@ -8,7 +8,9 @@ import struct
 from collections import defaultdict
 import pathlib
 import datetime
+from pprint import pprint
 
+from eft_cap.bin_helpers import ByteStream
 from eft_cap.msg_level import MsgDecoder, clear_global
 from eft_cap import bprint, split, split_8, split_16, split_16le
 import pickle
@@ -241,11 +243,11 @@ class NetworkTransport:
                     fragment = self.get_fragment(ctx, frag_id, inner_channel_id)
                     chunks = fragment['chunks']
 
-                    self.log.debug(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
+                    self.log.debug(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt} IN: {self.curr_packet["incoming"]} CHAN: {inner_channel_id}')
                     # _, stream = split(stream, 4)
 
                     if frag_idx in chunks:
-                        if chunks[frag_idx] != fragm_stream:
+                        if False and chunks[frag_idx] != fragm_stream:
                             self.log.warning(f'I: {chunks.keys()}')
                             self.log.warning(f'FID: {frag_id} FIDX: {frag_idx} TOTAL: {frag_amnt}')
                             self.log.warning(chunks[frag_idx])
@@ -257,8 +259,8 @@ class NetworkTransport:
                     chunks[frag_idx] = fragm_stream
 
                     self.log.debug(f'{frag_idx}: ID: {frag_id} LEN: {len(fragment)} VS {frag_amnt}/')
-                    if len(self.fragmented) > 0:
-                        self.log.debug(f'FRAGMENTED: {list(self.fragmented)}')
+                    if len(self.fragmented[ctx['incoming']]) > 0:
+                        self.log.debug(f'FRAGMENTED: {list(self.fragmented[ctx["incoming"]])}')
 
                     if len(chunks) == frag_amnt: # or frag_idx == frag_amnt - 1:
                         fragments = []
@@ -285,10 +287,12 @@ class NetworkTransport:
                         # print(f'Msg: {msg.op_type}')
                         yield True, msg
                         chan_fragments = self.fragmented[ctx['incoming']][inner_channel_id]
-                        chan_fragments[:] = self.without_fragment(frag_id, chan_fragments)
+                        without = list(self.without_fragment(frag_id, chan_fragments))
+                        chan_fragments[:] = without
                     else:
                         yield False, stream
                 elif inner_channel_id == M_MSG_COMBINED:
+                    return
                     _, stream = split_8(stream)
                 else:
                     print(self.curr_packet)
@@ -365,15 +369,20 @@ class NetworkTransport:
         elif len(fragmented) == 1:
             fragment = fragmented[0]
             if fragment['frag_id'] != frag_id:
+                self.log.debug(f'Got new fragment while previous is not finished: {frag_id} vs {fragment["frag_id"]}')
                 fragment = {'frag_id': frag_id, 'chunks': {}}
                 fragmented.append(fragment)
         else:
-            fragment = fragmented[-1]
-            if fragment['frag_id'] != frag_id:
+            fragment = None
+            for candidate in fragmented:
+                if candidate['frag_id'] == frag_id:
+                    fragment = candidate
+                    break
+            if not fragment:
                 fragment = {'frag_id': frag_id, 'chunks': {}}
                 fragmented.append(fragment)
 
-            for maybe_stale in list(fragmented[:-1]):
+            for maybe_stale in list(fragmented):
                 stale_id = fragment['frag_id']
                 if abs(stale_id - frag_id) > 4:
                     self.log.debug(f'Drop stale fragment: {key}')

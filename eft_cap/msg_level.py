@@ -713,11 +713,10 @@ class Player(ParsingMethods):
             f' {self} {msg_det} Len: {len(self.data.orig_stream)}'
         )
         # self.log.debug(self.data.orig_stream)
+        # self.log.warning(f'IS ALIVE: {is_alive}')
         if not is_alive:
             # probably not died but not alive yet
-            self.log.info(f"Died: {self} Disconnected: {is_disconnected}")
             self.is_alive = False
-
             inv_hash = self.data.read_u32()
             time = self.data.read_u64()
             # self.data.align()
@@ -728,7 +727,7 @@ class Player(ParsingMethods):
             killer = self.data.read_string(1350)
             lvl = self.data.read_u32()
             weapon = self.data.read_string()
-            self.log.info(f'{nickname} {status} {killer} with {weapon}. Msg in: {self}')
+            self.log.debug(f'{nickname} {status} {killer} with {weapon}. Msg in: {self}')
         else:
             self.update_position()
             self.update_rotation()
@@ -851,7 +850,6 @@ class Player(ParsingMethods):
             d.read_limited_bits(-1, 3)
         self.log.info(f'SKIP BITS FROM {start_bit} to {d.bit_offset}')  # TODO: delme
 
-
     def read_one_loot(self):
         d: BitStream = self.data
         # d.bit_offset -= 3
@@ -901,7 +899,7 @@ class Player(ParsingMethods):
     exit = math.inf
 
     def update_position(self, check=True):
-        assert self.is_alive
+        # assert self.is_alive
         last_pos = copy.copy(self.pos)
         read = self.data.read_bits(1) == 1
         if read:
@@ -1026,6 +1024,7 @@ class MsgDecoder(ParsingMethods):
             # bprint(self.content)
             up_bin = self.read_size_and_bytes()
             up_data = BitStream(up_bin)
+            # print(f'UP_DATA: {str(up_data.stream)} / {up_data.orig_stream}')
             if not self.ctx["incoming"]:
                 self.update_outbound(up_data)
 
@@ -1060,7 +1059,7 @@ class MsgDecoder(ParsingMethods):
         )  # type: Player
 
         # player = PLAYERS.get(self.channel_id, None)  # type: Player
-        if not player:  # and self.channel_id % 2 == 1:
+        if not player and self.channel_id % 2 == 1:
             player = Player.dummy(self.channel_id)
 
         self.log.debug(f"Update player: {player}")
@@ -1090,7 +1089,15 @@ class MsgDecoder(ParsingMethods):
             self.decode()
             self.decoded = True
         except Exception as e:
-            self.log.exception("While decode packet")
+            self.log.exception(f"While decode packet. Incoming={self.ctx['incoming']}")
+            # ByteStream(self.curr_packet['data']).dump_to('error.bin')
+            # BitStream.DEBUG = True
+            # be = BitStream(self.content).stream_be
+            # print(be)
+            # print(self.content)
+            # print(f'SDLEN: {len(BitStream(self.content).stream_be)}')
+            # print(f'LEN: {len(self.content)} HX: {hex(len(self.content))}')
+            # exit(0)
         finally:
             d = time.time() - t
             if d > 1:
