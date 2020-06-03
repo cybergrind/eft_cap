@@ -70,10 +70,17 @@ WANTED = {
     "5e54f62086f774219b0f1937",  # "item_barter_valuable_raven",
     "5bc9bdb8d4351e003562b8a1",  # "item_barter_valuable_elibadge",
     "5aafbde786f774389d0cbc0f",  # "item_container_ammo",
+    "5aafbcd986f7745e590fff23",  # med case
+
     "590c60fc86f77412b13fddcf",  # "item_info_docbag",
     "59fb016586f7746d0d4b423a",  # "item_container_money",
     "5d235bb686f77443f4331278",  # "item_container_lopouch",
     "59fb023c86f7746d0d4b423c",  # "item_container_weaponcase",
+    "59fb042886f7746c5005a7b2",  # item case
+    "5c093e3486f77430cb02e593",  # dogtag case
+    "5c0a840b86f7742ffa4f2482",  # THICC CASE
+    "5e2af55f86f7746d4159f07c",  # Grenade case
+    "5b6d9ce188a4501afc1b2b25",  # THICC weapon
     "59f8a37386f7747af3328f06",  # "foregrip_all_fortis_shift",
     "5c1bc5612e221602b5429350",  # "foregrip_all_zenit_rk_1",
     "5a34fe59c4a282000b1521a2",  # "silencer_ar10_aac_762_sdn_6_762x51",
