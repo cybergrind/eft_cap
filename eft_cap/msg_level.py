@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 SERVER_INIT = 147
 WORLD_SPAWN = 151
-WORLD_UNSPAWN = 152
+WORLD_UNSPAWN = 152  # TODO: maybe entry points here
 SUBWORLD_SPAWN = 153
 SUBWORLD_UNSPAWN = 154
 PLAYER_SPAWN = 155
@@ -476,6 +476,9 @@ class ParsingMethods:
 class Map(ParsingMethods):
     log = logging.getLogger('Map')
 
+    def zjson(self, what):
+        return json.loads(zlib.decompress(what))
+
     def __init__(self, msg):
         self.msg = msg
         self.data = msg.data
@@ -488,22 +491,28 @@ class Map(ParsingMethods):
 
         unk1 = self.read_size_and_bytes()  # assets / json
         unk2 = self.read_size_and_bytes()  # some ids
+
         unk3 = self.read_size_and_bytes()  # weather?
+
+
         unk4 = self.data.read_u8()
         member_type = self.data.read_u32()
         unk5 = self.data.read_f32()
         unk6 = self.read_size_and_bytes()  # lootables?
         unk7 = self.read_size_and_bytes()
-
         self.bound_min = self.read_pos()
         self.bound_max = self.read_pos()
         unk8 = self.data.read_u16()
         unk9 = self.data.read_u8()
         self.log.warning(f"Map: {self.bound_min} to {self.bound_max}")
+        self.exits = {}
 
     @property
     def bb(self):
         return self.bound_min, self.bound_max
+
+    def set_exits(self, exits: dict):
+        self.exits = exits
 
 
 class Player(ParsingMethods):
@@ -985,6 +994,16 @@ class MsgDecoder(ParsingMethods):
         self.op_type, stream = split_16le(stream)
         self.content, stream = split(stream, self.len)
 
+        # n = self.curr_packet['num']
+        # from_ = 200
+        # to_ = from_ + 200
+        # if from_ < n < to_:
+        #     print(f'Num: {n} OP: {self.op_type}')
+        #     pprint(self.content)
+        # elif n > to_:
+        #     import sys
+        #     sys.exit(1)
+
         self.log.debug(f'M: {self}')
         # stream.print_rest()
         self.try_decode()
@@ -1018,7 +1037,6 @@ class MsgDecoder(ParsingMethods):
             self.cid = self.data.read_u8()
             print(f"Exit: {PLAYERS[self.cid]}")
             del PLAYERS[self.cid]
-
         elif self.op_type == GAME_UPDATE:
             # print(f'READSIZE: {len(self.content)} / {self.content} / {self}')
             # bprint(self.content)
@@ -1036,12 +1054,29 @@ class MsgDecoder(ParsingMethods):
                     print("Exit 22")
                     exit(22)
                 self.update_world(up_data)
+        elif self.op_type == WORLD_SPAWN:
+            self.process_world_spawn(self.data)
         else:
             self.log.warning(f'Cannot process: {self}')
 
         if MsgDecoder.exit <= 0:
             print("Exit 20")
             exit(20)
+
+    def process_world_spawn(self, data: ByteStream):
+        exits = {}
+        try:
+            num = data.read_u16()
+            for i in range(num):
+                nl = data.read_u16()
+                name = ''.join(chr(data.read_u8()) for c in range(nl))
+                status = data.read_u8()
+                skip = data.read_bytes(6)
+                exits[name] = status
+
+        except:
+            self.log.exception('AAA')
+        GLOBAL['map'].set_exits(exits)
 
     def process_subworld_spawn(self, data: ByteStream):
         if not data.read_bytes(1):

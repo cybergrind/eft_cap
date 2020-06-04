@@ -29,11 +29,22 @@ const table = handleActions(
   },
   { head: [], rows: [] }
 )
+
+const exits = handleActions(
+  {
+    [actions.drawExits]: (previous, action) => {
+      return action.exits
+    },
+  },
+  {}
+)
+
 const createRootReducer = (history) =>
   combineReducers({
     router: connectRouter(history),
     ws,
     table,
+    exits,
   })
 
 export default createRootReducer

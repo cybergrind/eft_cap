@@ -4,6 +4,8 @@ WANTED = {
     '5c94bbff86f7747ee735c08f',  # lab key
     # '5d1b371186f774253763a656',  # plastic fuel
     '5751a89d24597722aa0e8db0',  # golden star
+    '5733279d245977289b77ec24',  # car battery
+    '590a3efd86f77437d351a25b',  # gasan
 
 
     "5c1d0c5f86f7744bb2683cf0",  # "Lab. Blue keycard"
@@ -119,6 +121,7 @@ WANTED = {
     "5780cf7f2459777de4559322",  # "Marked key"
     "5780d0532459777a5108b9a2",  # "Customs office key"
 
+    "5780cf942459777df90dcb72",  # "Dorm room 214 Key"  => 60k
     "5913915886f774123603c392",  # "Military base checkpoint key"
     "59148f8286f7741b951ea113",  # "Weapon safe key"
     "5a0448bc86f774736f14efa8",  # "The key to the closed premises of the sanatorium"

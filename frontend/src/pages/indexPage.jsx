@@ -5,6 +5,30 @@ import * as actions from "../actions"
 import * as selectors from "../selectors"
 
 class IndexPage extends Component {
+  drawExits() {
+    const rows = []
+    for (const [key, value] of Object.entries(this.props.exits)) {
+      rows.push(
+        <tr key={key} className={`exit_${value}`}>
+          <td>{key}</td>
+          <td>{value}</td>
+        </tr>
+      )
+    }
+
+    return (
+      <table className="exits table table-smaller">
+        <thead>
+          <tr>
+            <td>Name</td>
+            <td>Status</td>
+          </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </table>
+    )
+  }
+
   drawTable() {
     const { head, rows } = this.props.table
     // console.log("ROWS: ", rows)
@@ -44,10 +68,22 @@ class IndexPage extends Component {
     )
   }
   render() {
-    return <div className="container">{this.drawTable()}</div>
+    return (
+      <div className="container">
+        <div className="row">
+          <div className="col col-xl-11">{this.drawTable()}</div>
+          <div className="col col-xl-1">{this.drawExits()}</div>
+        </div>
+      </div>
+    )
   }
 }
-const indexSelector = createSelector(selectors.ws, selectors.table, (ws, table) => {
-  return { ws, table }
-})
+const indexSelector = createSelector(
+  selectors.ws,
+  selectors.table,
+  selectors.exits,
+  (ws, table, exits) => {
+    return { ws, table, exits }
+  }
+)
 export default connect(indexSelector)(IndexPage)

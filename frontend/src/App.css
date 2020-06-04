@@ -94,3 +94,16 @@
 .loot.wanted.nearby {
   background-color: crimson;
 }
+
+.exits {
+  font-size: 14px;
+}
+.exit_4 {
+  background-color: lightgreen;
+}
+.exit_1 {
+  background-color: indianred;
+}
+.exit_2 {
+  background-color: lightgoldenrodyellow;
+}

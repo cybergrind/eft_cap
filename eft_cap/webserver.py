@@ -10,7 +10,7 @@ from starlette.routing import Route, Mount, WebSocketRoute
 from starlette.websockets import WebSocket
 from starlette.staticfiles import StaticFiles
 import uvicorn
-from eft_cap.msg_level import  GLOBAL, PLAYERS, Player
+from eft_cap.msg_level import GLOBAL, PLAYERS, Player, Map
 import logging
 from fan_tools.python import  rel_path
 
@@ -99,7 +99,9 @@ class App:
             classes = []
             dist = player.dist()
 
-            if is_alive:
+            if player.me:
+                pass
+            elif is_alive:
                 classes.append('alive')
             else:
                 classes.append('dead')
@@ -151,3 +153,11 @@ class App:
             # [[f'Inner: {x}/{y}/ {time.time()}' for x in range(10)] for y in range(6)]
             [*players, *dead_players, *loot]
         )
+        await self.map_update()
+
+    async def map_update(self):
+        map: Map = GLOBAL['map']
+        if not map:
+            return
+        for ws in self.ws_clients:
+            await ws.send_json({'type': 'DRAW_EXITS', 'exits': map.exits})
