@@ -5,7 +5,8 @@ WANTED = {
     # '5d1b371186f774253763a656',  # plastic fuel
     '5751a89d24597722aa0e8db0',  # golden star
     '5733279d245977289b77ec24',  # car battery
-    '590a3efd86f77437d351a25b',  # gasan
+    # '590a3efd86f77437d351a25b',  # gasan
+    '544fb3f34bdc2d03748b456a',  # morphine
 
 
     "5c1d0c5f86f7744bb2683cf0",  # "Lab. Blue keycard"

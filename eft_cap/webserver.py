@@ -87,6 +87,15 @@ class App:
                 self.log.exception('While update')
             await asyncio.sleep(1)
 
+    def player_to_row(self, player, classes=[]):
+        return {
+            'row': [
+            player._cached_dist, f'{player.vdist()}', player.angle(), str(player),
+            str(player.rnd_pos), str(player.is_alive)
+            ],
+            'className': ' '.join(classes)
+        }
+
     async def send_update(self):
         players = []
         dead_players = []
@@ -94,10 +103,14 @@ class App:
         me = GLOBAL['me']
         my_group = me.group_id if me else None
 
+        player: Player
         for player in PLAYERS.values():
             is_alive = player.is_alive
             classes = []
             dist = player.dist()
+
+            if not is_alive and player.loot_price < 30000:
+                continue
 
             if player.me:
                 pass
@@ -132,19 +145,21 @@ class App:
             elif dist < 150:
                 classes.append('nearby')
 
-            row = {
-                'row': [
-                dist, f'{player.vdist()}', player.angle(), str(player),
-                str(player.rnd_pos), str(is_alive)
-                ],
-                'className': ' '.join(classes)
-            }
-            if player.is_alive:
-                players.append(row)
+            player._cached_dist = dist
+            if is_alive:
+                players.append((player, classes))
             else:
-                dead_players.append(row)
-        players = sorted(players, key=lambda x: x['row'][0])
-        dead_players = sorted(dead_players, key=lambda x: x['row'][0])[:4]
+                dead_players.append((player, classes))
+
+        players = sorted(players, key=lambda x: x[0]._cached_dist)
+        dead_players = sorted(dead_players, key=lambda x: x[0]._cached_dist)[:8]
+        for k in dead_players[8:]:
+            player, classes = k
+            if player.loot_price > 150_000 and k not in dead_players:
+                dead_players.append(player)
+
+        players = [self.player_to_row(player, classes) for player, classes in players]
+        dead_players = [self.player_to_row(player, classes) for player, classes in dead_players]
         GLOBAL['loot'].update_location()
         loot = GLOBAL['loot'].display_loot()
         await self.draw_table(
