@@ -404,6 +404,10 @@ class BitStream:
     def reset(self):
         self.bit_offset = 0
 
+    def read_check(self, what=0):
+        self.align()
+        return what == self.read_u32()
+
 
 class FloatQuantizer:
     def __init__(self, min_value, max_value, resolution):

@@ -258,7 +258,7 @@ class NetworkTransport:
 
                     chunks[frag_idx] = fragm_stream
 
-                    self.log.debug(f'{frag_idx}: ID: {frag_id} LEN: {len(fragment)} VS {frag_amnt}/')
+                    self.log.debug(f'{frag_idx}: ID: {frag_id} LEN: {len(fragment["chunks"])} VS {frag_amnt}/')
                     if len(self.fragmented[ctx['incoming']]) > 0:
                         self.log.debug(f'FRAGMENTED: {list(self.fragmented[ctx["incoming"]])}')
 
@@ -268,7 +268,7 @@ class NetworkTransport:
                             fragments.append(chunks[i])
 
                         bin_msg = b''.join(fragments)
-                        self.log.debug(f'Assemble {frag_id} LEN: {len(bin_msg)}')
+                        self.log.debug(f'Assemble {frag_id} Inner: {inner_channel_id} LEN: {len(bin_msg)}')
                         # print(bin_msg)
                         # bprint(bin_msg)
                         while len(bin_msg) > 2:

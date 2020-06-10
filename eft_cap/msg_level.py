@@ -507,7 +507,8 @@ class Map(ParsingMethods):
         self.msg = msg
         self.data = msg.data
 
-        unk = self.data.read_u8()
+        unk = self.data.read_u8()  # byte_0
+
         real_dt = 0 if self.data.read_u8() else self.data.read_u64()
         game_dt = self.data.read_u64()
         # print(f'Real DT: {real_dt} Game DT: {game_dt}')
@@ -518,7 +519,7 @@ class Map(ParsingMethods):
 
         unk3 = self.read_size_and_bytes()  # weather?
 
-        unk4 = self.data.read_u8()
+        unk4 = self.data.read_u8()  # bool_8
         member_type = self.data.read_u32()
         unk5 = self.data.read_f32()
         unk6 = self.read_size_and_bytes()  # lootables?
@@ -739,6 +740,7 @@ class Player(ParsingMethods):
         game_time = self.data.read_f32()
         # print(f'Time: {game_time}')
         is_disconnected = self.data.read_bits(1)
+        self.data.read_check(299)
         self.log.debug(f"OFFST: {self.data.bit_offset}")
         is_alive = self.data.read_bits(1)
 
@@ -766,6 +768,7 @@ class Player(ParsingMethods):
             weapon = self.data.read_string()
             self.log.debug(f'{nickname} {status} {killer} with {weapon}. Msg in: {self}')
         else:
+            self.data.read_check(304)
             self.update_position()
             self.update_rotation()
             self.skip_misc()
@@ -842,6 +845,7 @@ class Player(ParsingMethods):
             if not d.read_bits():  # movements step
                 d.read_bits()
 
+        d.read_check()
         blind_fire = d.read_limited_bits(-1, 1)  # blind fire
         soft_surface = d.read_bits()  # soft surface
 
@@ -852,6 +856,7 @@ class Player(ParsingMethods):
         d.read_bits()  # no stamina, no oxy, no hands stamina
         d.read_bits()
         d.read_bits()
+        d.read_check()
 
         if d.read_bits():
             if d.read_bits():  # door
@@ -877,6 +882,7 @@ class Player(ParsingMethods):
                     d.read_string()
                     d.read_string()
 
+        d.read_check()
         if not d.read_bits():
             optype = d.read_limited_bits(0, 10)
             d.read_limited_string(' ', 'z')
@@ -938,6 +944,7 @@ class Player(ParsingMethods):
     def update_position(self, check=True):
         # assert self.is_alive
         last_pos = copy.copy(self.pos)
+        self.data.read_check()
         read = self.data.read_bits(1) == 1
         if read:
             # self.log.debug(f"Update position {self} Read: {read} ME: {self.me}")
@@ -1020,6 +1027,7 @@ class MsgDecoder(ParsingMethods):
         msg = {}
         self.len, stream = split_16le(stream)
         self.op_type, stream = split_16le(stream)
+        # _, stream = split_8(stream)
         self.content, stream = split(stream, self.len)
 
         # n = self.curr_packet['num']
@@ -1044,7 +1052,13 @@ class MsgDecoder(ParsingMethods):
     def init_server(self):
         if not self.ctx["incoming"]:
             return
-        curr_map = Map(self)
+        try:
+            self.data.read_u8()  # encrypted flag?
+            curr_map = Map(self)
+        except:
+            self.log.exception('AAA')
+            ByteStream(self.curr_packet['data']).dump_to('error.bin')
+            exit(0)
         GLOBAL["map"] = curr_map
 
     def decode(self):

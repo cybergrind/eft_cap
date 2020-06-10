@@ -9,6 +9,9 @@ shoreline:
  
 {'x': -148.9, 'y': -9.4, 'z': -332.4} - top river, electro nearest to top-river, inside
 
+
+
+
 lng/lat => z/x
 135.3, 458.6 => 1124, 387.1   / village
 -352.2, -158 => 709.5, 61.1   / fence
