@@ -4,4 +4,6 @@ python.exe -m venv venv
 cd frontend
 npm i
 npm run build
+
 cd ..
+git clone https://github.com/TrustedSourceLeaks/LeakedServer.git

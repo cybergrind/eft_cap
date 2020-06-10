@@ -5,3 +5,6 @@ cd frontend
 npm i
 npm run build
 cd ..
+cd LeakedServer
+git pull -r
+cd ..
