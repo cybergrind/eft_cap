@@ -6,7 +6,7 @@ WANTED = {
     '5751a89d24597722aa0e8db0',  # golden star
     '5733279d245977289b77ec24',  # car battery
     # '590a3efd86f77437d351a25b',  # gasan
-    '544fb3f34bdc2d03748b456a',  # morphine
+    # '544fb3f34bdc2d03748b456a',  # morphine
 
 
     "5c1d0c5f86f7744bb2683cf0",  # "Lab. Blue keycard"
@@ -38,7 +38,7 @@ WANTED = {
     "59e35cbb86f7741778269d83",  # hose
     "5c052fb986f7746b2101e909",  # rfid rdr
     "59e3606886f77417674759a5",  # nacl
-    "5af0534a86f7743b6f354284",  # med diagset
+    "5af0534a86f7743b6f354284",  # med diagsetc
     "5b4335ba86f7744d2837a264",  # med bloodset
     "59e3658a86f7741776641ac4",  # cat
     "5d1b313086f77425227d1678",  # ele relay
@@ -61,7 +61,7 @@ WANTED = {
     "5d6fc78386f77449d825f9dc",  # green powder
     "5bc9b9ecd4351e3bac122519",  # beardoil
     "5d40419286f774318526545f",  # m.scissors
-    "5af04b6486f774195a3ebb49",  # pliers elite
+    # "5af04b6486f774195a3ebb49",  # pliers elite
     "590de71386f774347051a052",  # teapot
     "590de7e986f7741b096e5f32",  # "item_quest_barter_valuable_vase",
     "5c1267ee86f77416ec610f72",  # "item_barter_valuable_prokill",
@@ -124,14 +124,14 @@ WANTED = {
 
     "5780cf942459777df90dcb72",  # "Dorm room 214 Key"  => 60k
     "5913915886f774123603c392",  # "Military base checkpoint key"
-    "59148f8286f7741b951ea113",  # "Weapon safe key"
+    # "59148f8286f7741b951ea113",  # "Weapon safe key"
     "5a0448bc86f774736f14efa8",  # "The key to the closed premises of the sanatorium"
     "5a0dc45586f7742f6b0b73e3",  # "Office 104 West wing key"
     "5a0dc95c86f77452440fc675",  # "Office 112 West wing key"
     "5a0ea64786f7741707720468",  # "Office 107 East wing key"
     "5a0ea69f86f7741cd5406619",  # "Office 108 East wing key"
     "5a0ea79b86f7741d4a35298e",  # "Health resort utility room key"
-    "5a0eb6ac86f7743124037a28",  # "Cottage back entrance key"
+    # "5a0eb6ac86f7743124037a28",  # "Cottage back entrance key"
     "5a0ec6d286f7742c0b518fb5",  # "West wing room 205 key"
     "5a0ec70e86f7742c0b518fba",  # "West wing room 207 key"
     "5a0ee30786f774023b6ee08f",  # "West wing room 216 key"
@@ -150,8 +150,8 @@ WANTED = {
     "5a0eee1486f77402aa773226",  # "East wing room 328 key"
     "5a0eff2986f7741fd654e684",  # "Health resort room 321 safe key"
     "5a0f006986f7741ffd2fe484",  # "Weather station safe key"
-    "5a0f045e86f7745b0f0d0e42",  # "Gas station safe key"
-    "5a0f068686f7745b0d4ea242",  # "Cottage safe key"
+    # "5a0f045e86f7745b0f0d0e42",  # "Gas station safe key"
+    # "5a0f068686f7745b0d4ea242",  # "Cottage safe key"
     "5a0f075686f7745bcc42ee12",  # "Key to store safe"
     "5a0f08bc86f77478f33b84c2",  # "Health resort management office safe key"
     "5a0f0f5886f7741c4e32a472",  # "Health resort warehouse safe key"
@@ -205,5 +205,5 @@ WANTED = {
     "5da46e3886f774653b7a83fe",  # "RB-RS key"
     "5da5cdcd86f774529238fb9b",  # "RB-RH key"
     "5da743f586f7744014504f72",  # "USEC stash on Customs key"
-    "5ae4498786f7744bde357695",  # "The key to success"
+    # "5ae4498786f7744bde357695",  # "The key to success"
 }

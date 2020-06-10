@@ -3,6 +3,7 @@ import { connect } from "react-redux"
 import { createSelector } from "reselect"
 import * as actions from "../actions"
 import * as selectors from "../selectors"
+import Map from "../components/map"
 
 class IndexPage extends Component {
   drawExits() {
@@ -30,51 +31,68 @@ class IndexPage extends Component {
   }
 
   drawTable() {
-    const { head, rows } = this.props.table
-    // console.log("ROWS: ", rows)
-    const head_content = head.map((text, idx) => <th key={`th_${idx}`}>{text}</th>)
+    const HEAD = ["Dist", "VDist", "Name", "Coord", "Is Alive"]
+    const { me, players, deadPlayers, loot } = this.props.table
+    const head_content = HEAD.map((text, idx) => <th key={`th_${idx}`}>{text}</th>)
 
-    const body = rows.map((row, idx) => {
-      const row_content = row.row.map((cell, cell_idx) => {
-        const key = `td_${idx}_${cell_idx}`
-        let cell_text
-        if (["string", "number"].includes(typeof cell)) {
-          cell_text = cell
-          return <td key={key}>{cell_text}</td>
-        } else {
-          cell_text = cell.text
-          const click_action = () => this.props.dispatch(cell.action)
-          return (
-            <td key={key} onClick={click_action}>
-              {cell_text}
-            </td>
-          )
-        }
-      })
+    const playerRows = [me, ...players, ...deadPlayers].map((player, idx) => {
+      if (!player) {
+        return <></>
+      }
+      const { name, is_alive, dist, vdist, className, pos } = player
       return (
-        <tr key={`row_${idx}`} className={row.className}>
-          {row_content}
+        <tr key={name} className={className}>
+          <td>{dist}</td>
+          <td>{vdist}</td>
+          <td>{name}</td>
+          <td>{JSON.stringify(pos)}</td>
+          <td>{is_alive}</td>
         </tr>
       )
     })
-
+    const lootRows = loot.map((item) => {
+      const { id, name, vdist, dist, total_price, className, action } = item
+      const clickAction = () => this.props.dispatch(action)
+      return (
+        <tr key={id} className={className}>
+          <td>{dist}</td>
+          <td>{vdist}</td>
+          <td>{name}</td>
+          <td>Price: {total_price}</td>
+          <td onClick={clickAction}>Hide</td>
+        </tr>
+      )
+    })
     return (
       <table className="table table-bordered table-sm table-smaller">
         <thead>
           <tr>{head_content}</tr>
         </thead>
-        <tbody>{body}</tbody>
+        <tbody>
+          {playerRows}
+          {lootRows}
+        </tbody>
       </table>
     )
   }
+
   render() {
+    const { me, players, deadPlayers } = this.props.table
+    let position = [0, 0]
+    if (me) {
+      const c = me.pos
+      position = [c.z, c.x]
+    }
     return (
-      <div className="container">
-        <div className="row">
-          <div className="col col-xl-11">{this.drawTable()}</div>
-          <div className="col col-xl-1">{this.drawExits()}</div>
+      <>
+        <div className="container">
+          <div className="row">
+            <div className="col col-xl-11">{this.drawTable()}</div>
+            <div className="col col-xl-1">{this.drawExits()}</div>
+          </div>
         </div>
-      </div>
+        {/*<Map position={position} markers={[me, ...players, ...deadPlayers]} />*/}
+      </>
     )
   }
 }

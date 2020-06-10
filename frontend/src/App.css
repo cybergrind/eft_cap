@@ -42,12 +42,34 @@
   font-size: 0.9rem;
 }
 
+/* Prevent background color on markers */
+.pointer {
+  background-color: rgba(0, 0, 0, 0) !important;
+}
+
+:root {
+  --danger5: gold;
+  --danger0: white;
+}
+
 .alive.player {
-  background-color: gold;
+  background-color: var(--danger5);
 }
+
+
+.pointer.alive.player {
+  fill: var(--danger5);
+}
+
 .alive.player.my_group {
-  background-color: white;
+  background-color: var(--danger0) !important;
+  color: black !important;
 }
+
+.pointer.alive.player.my_group {
+  fill: var(--danger0);
+}
+
 
 .alive.player.other_group {
   font-weight: bold;
@@ -107,3 +129,28 @@
 .exit_2 {
   background-color: lightgoldenrodyellow;
 }
+
+#myMap {
+  height: 500px;
+  width: 800px;
+}
+.leaflet-div-icon {
+  background-color: rgba(0, 0, 0, 0);
+  border: none;
+}
+svg.pointer {
+  opacity: 1;
+}
+
+/*.iconDead {*/
+/*  fill: red;*/
+/*}*/
+
+/*.player.dead {*/
+/*  fill: grey;*/
+/*}*/
+
+/*.player.alive {*/
+/*  fill: yellowgreen;*/
+/*}*/
+

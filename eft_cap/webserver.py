@@ -12,7 +12,7 @@ from starlette.staticfiles import StaticFiles
 import uvicorn
 from eft_cap.msg_level import GLOBAL, PLAYERS, Player, Map
 import logging
-from fan_tools.python import  rel_path
+from fan_tools.python import rel_path
 
 
 class App:
@@ -75,9 +75,17 @@ class App:
         self.loop.stop()
         exit(0)
 
-    async def draw_table(self, head, table):
+    async def draw_table(self, me, players, dead_players, loot):
         for ws in self.ws_clients:
-            await ws.send_json({'type': 'DRAW_TABLE', 'rows': table, 'head': head})
+            await ws.send_json(
+                {
+                    'type': 'DRAW_TABLE',
+                    'me': me,
+                    'players': players,
+                    'deadPlayers': dead_players,
+                    'loot': loot,
+                }
+            )
 
     async def update_loop(self):
         while True:
@@ -90,10 +98,33 @@ class App:
     def player_to_row(self, player, classes=[]):
         return {
             'row': [
-            player._cached_dist, f'{player.vdist()}', player.angle(), str(player),
-            str(player.rnd_pos), str(player.is_alive)
+                player._cached_dist,
+                f'{player.vdist()}',
+                player.angle(),
+                str(player),
+                player.rnd_pos,
+                str(player.is_alive),
             ],
-            'className': ' '.join(classes)
+            'className': ' '.join(classes),
+        }
+
+    def player_to_json(self, player: Player):
+        if not player:
+            return None
+
+        return {
+            'name': str(player),
+            'dist': player.dist(),
+            'angle': player.angle(),
+            'vdist': player.vdist(),
+            'pos': player.rnd_pos,
+            'group': player.group_id,
+            'loot_price': player.loot_price,
+            'is_alive': player.is_alive,
+            'is_npc': player.is_npc,
+            'is_scav': player.is_scav,
+            'me': player.me,
+            'wanted': getattr(player, 'wanted', False),
         }
 
     async def send_update(self):
@@ -102,72 +133,20 @@ class App:
         player: Player
         me = GLOBAL['me']
         my_group = me.group_id if me else None
+        players = []
 
         player: Player
         for player in PLAYERS.values():
-            is_alive = player.is_alive
-            classes = []
-            dist = player.dist()
-
-            if not is_alive and player.loot_price < 30000:
-                continue
 
             if player.me:
-                pass
-            elif is_alive:
-                classes.append('alive')
-            else:
-                classes.append('dead')
+                continue
 
-            if player.is_npc:
-                classes.append('npc')
-            else:
-                classes.append('player')
+            players.append(self.player_to_json(player))
+            continue
 
-            if player.is_scav:
-                classes.append('scav')
-
-            if player.group_id and player.group_id != -1:
-                if player.group_id == my_group:
-                    classes.append('my_group')
-                else:
-                    classes.append('other_group')
-
-            if hasattr(player, 'wanted') and player.is_scav:
-                classes.append('player_wanted')
-                # pprint(player)
-                # exit(9)
-
-            if dist == 0 or (my_group and player.group_id and player.group_id == my_group):
-                pass
-            elif dist < 50:
-                classes.append('brawl')
-            elif dist < 150:
-                classes.append('nearby')
-
-            player._cached_dist = dist
-            if is_alive:
-                players.append((player, classes))
-            else:
-                dead_players.append((player, classes))
-
-        players = sorted(players, key=lambda x: x[0]._cached_dist)
-        dead_players = sorted(dead_players, key=lambda x: x[0]._cached_dist)[:8]
-        for k in dead_players[8:]:
-            player, classes = k
-            if player.loot_price > 150_000 and k not in dead_players:
-                dead_players.append(player)
-
-        players = [self.player_to_row(player, classes) for player, classes in players]
-        dead_players = [self.player_to_row(player, classes) for player, classes in dead_players]
         GLOBAL['loot'].update_location()
         loot = GLOBAL['loot'].display_loot()
-        await self.draw_table(
-            ['Dist', 'VDist', 'Angle', 'Name LVL/Frac/Type/Party', 'Coord', 'Is Alive'],
-            # [f'Head: {i}' for i in range(10)],
-            # [[f'Inner: {x}/{y}/ {time.time()}' for x in range(10)] for y in range(6)]
-            [*players, *dead_players, *loot]
-        )
+        await self.draw_table(self.player_to_json(me), players, dead_players, loot)
         await self.map_update()
 
     async def map_update(self):

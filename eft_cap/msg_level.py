@@ -426,8 +426,32 @@ class Loot:
             rows.extend(self.get_loot(self.by_price, self.BY_PRICE_EXPENSIVE))
         return rows
 
+    def loot_to_json(self, item):
+        if 'name' in item:
+            name = item['name']
+        else:
+            item['name'] = f"NO NAME: {item['item']['template_id']}"
+            name = item['name']
+
+        return {
+            'type': 'loot',
+            'id': item['id'],
+            'name': name,
+            'dist': item.get('dist', 1000.0),
+            'vdist': item.get('vdist', 1000.0),
+            'angle': item.get('angle', 1000.0),
+            'total_price': item.get('total_price', 'unk'),
+            'wanted': item.get('wanted', False),
+            'action': {
+                'type': 'MSG_TO_SERVER',
+                'payload': {'type': 'LOOT_HIDE', 'payload': {'id': item['id']}},
+            },
+        }
+
     def display_loot(self):
         """ dist, vdist, angle, name, coord, is_alive """
+        self.display_rows()
+        return [self.loot_to_json(item) for item in self.by_id.values()]
         rows = self.display_rows()
 
         return [self.item_to_row(item) for item in rows]
@@ -494,7 +518,6 @@ class Map(ParsingMethods):
 
         unk3 = self.read_size_and_bytes()  # weather?
 
-
         unk4 = self.data.read_u8()
         member_type = self.data.read_u32()
         unk5 = self.data.read_f32()
@@ -542,6 +565,7 @@ class Player(ParsingMethods):
         self.pos = self.read_pos()
         self.deserialize_initial_state()
         PLAYERS[self.cid] = self
+        self.__cached_name = self.get_name()
         self.log = logging.getLogger(f'{self}')
 
     def update_loot_price(self):
@@ -610,7 +634,7 @@ class Player(ParsingMethods):
         self.side = "SCAV" if side == "Savage" else side
         self.group_id = info.get('GroupId', None)
         if self.group_id:
-            self.group_id = self.group_id[-3:]
+            self.group_id = self.group_id
         self.log.info(
             f"OBS POS:{self.nickname} => {self.pos} ROT: {self.rot} Prone: {in_prone} POSE: {self.pose}"
         )
@@ -624,12 +648,15 @@ class Player(ParsingMethods):
         else:
             self.price_class = f'{round(self.loot_price / 1000_000, 1)}M'
 
-    def __str__(self):
+    def get_name(self):
         return (
             f'[{"BOT" if self.is_npc else self.lvl}/{self.side}/'
-            f'{self.surv_class[:4]}/{self.group_id}] {self.nickname}:'
+            f'{self.surv_class[:4]}/{self.group_id and self.group_id[-3:]}] {self.nickname}:'
             f'{self.price_class}[{self.cid}]'
         )
+
+    def __str__(self):
+        return self.__cached_name
 
     @staticmethod
     def dummy(cid, me=False):
@@ -645,6 +672,7 @@ class Player(ParsingMethods):
         player.pos = np.array([0, 0, 0], np.float)
         player.rot = np.array([0, 0, 0], np.float)
         PLAYERS[cid] = player
+        player.__cached_name = player.get_name()
         return player
 
     @property
