@@ -667,6 +667,8 @@ class Player(ParsingMethods):
         player.lvl = -1
         player.side = f'UNK'
         player.nickname = f'Unk:me={me}'
+        player.group_id = None
+        player.price_class = 'unk'
         player.is_npc = False
         player.surv_class = 'UNK'
         player.is_alive = True
