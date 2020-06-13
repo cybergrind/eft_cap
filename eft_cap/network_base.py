@@ -59,6 +59,9 @@ class NetworkTransport:
     log = logging.getLogger('NetworkTransport')
 
     def __init__(self, src, args):
+        self.encrypt = False
+        self.decrypt = False
+
         self.args = args
         self.replay = args.packets_file
 

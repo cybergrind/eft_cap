@@ -40,6 +40,18 @@ class IndexPage extends Component {
         return <></>
       }
       const { name, is_alive, dist, vdist, className, pos } = player
+      if (player.encrypted) {
+          return (
+              <tr key={name} className={className}>
+                  <td></td>
+                  <td></td>
+                  <td>{name}</td>
+                  <td>{player.sec_since_update}</td>
+                  <td></td>
+              </tr>
+          )
+      }
+
       return (
         <tr key={name} className={className}>
           <td>{dist}</td>

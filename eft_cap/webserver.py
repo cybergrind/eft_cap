@@ -125,6 +125,9 @@ class App:
             'is_scav': player.is_scav,
             'me': player.me,
             'wanted': getattr(player, 'wanted', False),
+            'encrypted': player.encrypt,
+            'updated_at': player.updated_at,
+            'sec_since_update': time.time() - player.updated_at,
         }
 
     async def send_update(self):

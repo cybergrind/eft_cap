@@ -96,9 +96,12 @@ const table = handleActions(
           deadPlayers.push(player)
         }
       }
-
-      alivePlayers.sort((a, b) => a.dist - b.dist)
-      deadPlayers.sort((a, b) => a.dist - b.dist)
+      let param = 'dist'
+      if (me && me.encrypted){
+        param = 'sec_since_updated'
+      }
+      alivePlayers.sort((a, b) => a[param] - b[param])
+      deadPlayers.sort((a, b) => a[param] - b[param])
 
       me.className = getPlayerClassName(me, me)
 
