@@ -62,6 +62,41 @@ def capture_diver(q: Queue):
                 }
             )
 
+def capture_pcap(q: Queue):
+    import pcap
+    import scapy
+    from scapy.layers.l2 import Ether
+    from scapy.all import load_layer
+    load_layer('inet')
+    s = pcap.pcap('eno1', promisc=True, immediate=True)
+    s.setfilter('udp portrange 16900-17100')
+
+    def raw_to_dict(data):
+        ue = Ether(data)
+        ip = ue.payload
+
+        if ip.version != 4:
+            return
+
+        if ip.proto != 17:
+            return
+        udp = ip.payload
+        if udp.len == 0:
+            return
+        if not isinstance(udp.payload, scapy.packet.Raw):
+            return
+        payload = udp.load
+        return {
+            'incoming': ip.dst.startswith('192.168.'),
+            'data': payload,
+            'src_port': udp.sport,
+            'dst_port': udp.dport,
+        }
+    for t, data in s:
+        dct = raw_to_dict(data)
+        if data:
+            q.put_nowait(dct)
+
 
 def gen_kill(p):
     def _inner():
@@ -72,7 +107,10 @@ def gen_kill(p):
 
 async def capture():
     q = Queue()
-    p = Process(target=capture_diver, args=(q,))
+    target = capture_diver
+    if sys.platform == 'linux':
+        target = capture_pcap
+    p = Process(target=target, args=(q,))
     p.start()
     t = time.time()
     GLOBAL['on_exit'].append(gen_kill(p))

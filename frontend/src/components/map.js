@@ -1,8 +1,8 @@
 import React, { Component } from "react"
 import L, { divIcon } from "leaflet"
 import { Map, Marker, ImageOverlay, Popup, CircleMarker } from "react-leaflet"
-import DivIcon from "react-leaflet-div-icon"
-import deadIcon from "../icons/dead.svg"
+// import DivIcon from "react-leaflet-div-icon"
+// import deadIcon from "../icons/dead.svg"
 
 function Player({ className } = {}) {
   return `<svg
