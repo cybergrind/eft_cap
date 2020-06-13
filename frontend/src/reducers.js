@@ -45,7 +45,7 @@ function getPlayerClassName(me, player) {
     className.push(group)
   }
 
-  if (player.me) {
+  if (player.me || player.encrypted) {
   } else if (dist < 50) {
     className.push("brawl")
   } else if (dist < 150) {
@@ -86,9 +86,11 @@ const table = handleActions(
   {
     [actions.drawTable]: (previous, action) => {
       const { me = null, players = [], loot = [] } = action
+      me.sec_since_update = Math.round(me.sec_since_update / 10)
       let alivePlayers = []
       let deadPlayers = []
       for (let player of players) {
+        player.sec_since_update = Math.round(player.sec_since_update / 10)
         player.className = getPlayerClassName(me, player)
         if (player.is_alive) {
           alivePlayers.push(player)
@@ -96,10 +98,11 @@ const table = handleActions(
           deadPlayers.push(player)
         }
       }
-      let param = 'dist'
-      if (me && me.encrypted){
-        param = 'sec_since_updated'
+      let param = "dist"
+      if (me && me.encrypted) {
+        param = "sec_since_update"
       }
+      console.log("Sort by: ", param)
       alivePlayers.sort((a, b) => a[param] - b[param])
       deadPlayers.sort((a, b) => a[param] - b[param])
 

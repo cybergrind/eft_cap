@@ -548,11 +548,10 @@ class Player(ParsingMethods):
         self.is_scav = False
         self.group_id = -1
         self.updated_at = time.time()
-        self.encrypt = msg.transport.encrypt
 
         if not msg:
             return
-
+        self.encrypt = msg.transport.encrypt
         if me:
             GLOBAL['me'] = self
 
@@ -660,9 +659,10 @@ class Player(ParsingMethods):
         return self.__cached_name
 
     @staticmethod
-    def dummy(cid, me=False):
+    def dummy(cid, transport, me=False):
         log.debug(f'Create dummy player: {me} / {cid}')
         player = Player(msg=None, me=me)
+        player.encrypt = transport.encrypt
         player.cid = cid
         player.lvl = -1
         player.side = f'UNK'
@@ -1143,20 +1143,20 @@ class MsgDecoder(ParsingMethods):
 
         # player = PLAYERS.get(self.channel_id, None)  # type: Player
         if not player and self.channel_id % 2 == 1:
-            player = Player.dummy(self.channel_id)
+            player = Player.dummy(self.channel_id, self.transport)
 
         self.log.debug(f"Update player: {player}")
         if not self.transport.decrypt:
             player.update(self, up_data)
-        else:
-            player.update_encrypted(self)
+        elif player:
+            player.update_encrypted()
 
     def update_outbound(self, up_data: BitStream):
         # if self.curr_packet['num'] == 1433:
         #     self.log.debug(f'{bytes(up_data.rest)}')
         #     exit(112)
         if not GLOBAL['me']:
-            GLOBAL['me'] = Player.dummy(self.channel_id, me=True)
+            GLOBAL['me'] = Player.dummy(self.channel_id, self.transport, me=True)
         GLOBAL['me'].update_me(self, up_data)
 
     def update_world(self, up_data: BitStream):
