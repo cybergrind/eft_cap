@@ -31,7 +31,7 @@ class IndexPage extends Component {
   }
 
   drawTable() {
-    const HEAD = ["Dist", "Angle", "VDist", "Name", "Coord", "Is Alive"]
+    const HEAD = ["Dist", "VDist", "Angle", "Name", "Coord", "Is Alive"]
     const { me, players, deadPlayers, loot } = this.props.table
     const head_content = HEAD.map((text, idx) => <th key={`th_${idx}`}>{text}</th>)
 
@@ -56,8 +56,8 @@ class IndexPage extends Component {
       return (
         <tr key={name} className={className}>
           <td>{dist}</td>
-          <td>{angle}</td>
           <td>{vdist}</td>
+          <td>{angle}</td>
           <td>{name}</td>
           <td>{JSON.stringify(pos)}</td>
           <td>{is_alive}</td>
@@ -70,8 +70,8 @@ class IndexPage extends Component {
       return (
         <tr key={id} className={className}>
           <td>{dist}</td>
-          <td>{angle}</td>
           <td>{vdist}</td>
+          <td>{angle}</td>
           <td>{name}</td>
           <td>Price: {total_price}</td>
           <td onClick={clickAction}>Hide</td>
