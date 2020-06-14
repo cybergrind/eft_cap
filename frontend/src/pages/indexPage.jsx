@@ -31,7 +31,7 @@ class IndexPage extends Component {
   }
 
   drawTable() {
-    const HEAD = ["Dist", "VDist", "Name", "Coord", "Is Alive"]
+    const HEAD = ["Dist", "Angle", "VDist", "Name", "Coord", "Is Alive"]
     const { me, players, deadPlayers, loot } = this.props.table
     const head_content = HEAD.map((text, idx) => <th key={`th_${idx}`}>{text}</th>)
 
@@ -39,10 +39,11 @@ class IndexPage extends Component {
       if (!player) {
         return <></>
       }
-      const { name, is_alive, dist, vdist, className, pos } = player
+      const { name, angle, is_alive, dist, vdist, className, pos } = player
       if (player.encrypted) {
         return (
           <tr key={name} className={className}>
+            <td></td>
             <td></td>
             <td></td>
             <td>{name}</td>
@@ -55,6 +56,7 @@ class IndexPage extends Component {
       return (
         <tr key={name} className={className}>
           <td>{dist}</td>
+          <td>{angle}</td>
           <td>{vdist}</td>
           <td>{name}</td>
           <td>{JSON.stringify(pos)}</td>
@@ -63,11 +65,12 @@ class IndexPage extends Component {
       )
     })
     const lootRows = loot.map((item) => {
-      const { id, name, vdist, dist, total_price, className, action } = item
+      const { id, name, angle, vdist, dist, total_price, className, action } = item
       const clickAction = () => this.props.dispatch(action)
       return (
         <tr key={id} className={className}>
           <td>{dist}</td>
+          <td>{angle}</td>
           <td>{vdist}</td>
           <td>{name}</td>
           <td>Price: {total_price}</td>
