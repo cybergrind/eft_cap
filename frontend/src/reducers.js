@@ -102,7 +102,6 @@ const table = handleActions(
       if (me && me.encrypted) {
         param = "sec_since_update"
       }
-      console.log("Sort by: ", param)
       alivePlayers.sort((a, b) => a[param] - b[param])
       deadPlayers.sort((a, b) => a[param] - b[param])
 
