@@ -102,7 +102,7 @@ class IndexPage extends Component {
       <>
         <div className="container">
           <div className="row">
-            <div className="col col-xl-11">{this.drawTable()}</div>
+            <div className="col col-xl-11 col-sm-12">{this.drawTable()}</div>
             <div className="col col-xl-1">{this.drawExits()}</div>
           </div>
         </div>
